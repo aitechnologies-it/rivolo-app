@@ -1030,7 +1030,7 @@
 
 .bottom-tray-blur {
   bottom: var(--keyboard-offset, 0px);
-  height: calc(var(--bottom-tray-height, 3.5rem) + env(safe-area-inset-bottom) + 3.5rem);
+  height: calc(var(--bottom-tray-height, 3.5rem) + env(safe-area-inset-bottom) + 2.5rem);
 }
 
 .bottom-tray-blur.bottom-tray-blur-search {
