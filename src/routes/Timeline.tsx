@@ -310,7 +310,7 @@ const LOG_SCOPE = 'TimelinePerf'
 // Fades the thread out behind the pinned header. The bottom edge is not this mask's job:
 // the shared tray veil covers it for the timeline and the chat alike.
 const MOBILE_CHAT_TOP_FADE =
-  'linear-gradient(to bottom, transparent 0, transparent calc(env(safe-area-inset-top) + 3rem), rgba(0,0,0,0.55) calc(env(safe-area-inset-top) + 4rem), black calc(env(safe-area-inset-top) + 5rem))'
+  'linear-gradient(to bottom, transparent 0, transparent calc(env(safe-area-inset-top) + 4.5rem), black calc(env(safe-area-inset-top) + 5.5rem))'
 
 // --- Component ---
 
@@ -1867,7 +1867,7 @@ export default function Timeline() {
                 WebkitMaskImage: MOBILE_CHAT_TOP_FADE,
                 // Matches where MOBILE_CHAT_TOP_FADE turns fully opaque, so the oldest
                 // message is never parked half-faded at the top of the thread.
-                paddingTop: 'calc(env(safe-area-inset-top) + 5rem)',
+                paddingTop: 'calc(env(safe-area-inset-top) + 5.5rem)',
                 paddingBottom: 'calc(var(--keyboard-offset, 0px) + env(safe-area-inset-bottom) + 10rem)',
                 scrollPaddingBottom: 'calc(var(--keyboard-offset, 0px) + env(safe-area-inset-bottom) + 10rem)',
               }}
