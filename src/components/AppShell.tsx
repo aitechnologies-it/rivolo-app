@@ -407,7 +407,7 @@ export default function AppShell() {
         }`}
       />
       <header
-        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto grid h-16 grid-cols-[1fr_auto_1fr] items-center px-2 sm:fixed sm:px-0"
+        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto mt-4 grid h-16 grid-cols-[1fr_auto_1fr] items-center px-2 sm:fixed sm:mt-0 sm:px-0"
       >
         <div className="relative z-10 flex items-center gap-2">
           {showBackButton && (
