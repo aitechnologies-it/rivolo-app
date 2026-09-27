@@ -448,7 +448,7 @@ export default function AppShell() {
           aria-label="Home"
           onClick={handleLogoClick}
         >
-          <img src="/logo.png" alt="Rivolo" className="app-logo h-10 w-auto" />
+          <img src="/logo.svg" alt="Rivolo" className="app-logo h-10 w-auto" />
           <svg
             className="logo-current"
             viewBox="0 0 120 12"
