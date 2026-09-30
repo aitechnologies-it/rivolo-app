@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { getTabSyncBlockReason } from '../../lib/tabSyncCoordinator'
+import type { SyncProviderId } from '../../lib/sync'
 import {
   blockedPushMessage,
   pullFromSyncAndRefresh,
@@ -14,20 +15,29 @@ type AutoSyncStatus = {
 }
 
 const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000
+const ONEDRIVE_SYNC_INTERVAL_MS = 5_000
 const FOREGROUND_BACKGROUND_MIN_MS = 15 * 1000
 
 type AutoSyncReason = 'start' | 'reconnect' | 'foreground' | 'interval' | 'queued'
 
-export const useAutoSync = (status: AutoSyncStatus) => {
-  const statusRef = useRef(status)
+export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | null = null) => {
+  const statusRef = useRef({ ...status, provider })
+  const retryAt = useRef(0)
+  const failures = useRef(0)
+  const intervalMs = provider === 'onedrive' ? ONEDRIVE_SYNC_INTERVAL_MS : AUTO_SYNC_INTERVAL_MS
   const lastAutoSyncAt = useRef(0)
   const autoSyncInFlight = useRef(false)
   const autoSyncRequestedWhileRunning = useRef(false)
   const backgroundedAt = useRef<number | null>(null)
 
   useEffect(() => {
-    statusRef.current = status
-  }, [status])
+    statusRef.current = { ...status, provider }
+  }, [status, provider])
+
+  useEffect(() => {
+    retryAt.current = 0
+    failures.current = 0
+  }, [provider, status.targetName, status.connected])
 
   const reconcileOnce = useCallback(
     async (reason: AutoSyncReason) => {
@@ -37,20 +47,32 @@ export const useAutoSync = (status: AutoSyncStatus) => {
       if (getTabSyncBlockReason()) return
 
       const now = Date.now()
-      if (reason === 'interval' && now - lastAutoSyncAt.current < AUTO_SYNC_INTERVAL_MS) {
+      const isOneDrive = currentStatus.provider === 'onedrive'
+      if (isOneDrive && now < retryAt.current) return
+      const interval = isOneDrive ? ONEDRIVE_SYNC_INTERVAL_MS : AUTO_SYNC_INTERVAL_MS
+      if (reason === 'interval' && now - lastAutoSyncAt.current < interval) {
         return
       }
 
       lastAutoSyncAt.current = now
+      const failed = () => {
+        if (isOneDrive) {
+          failures.current += 1
+          retryAt.current = Date.now() + Math.min(60_000, 5_000 * 2 ** Math.min(failures.current, 4))
+        }
+      }
+      const succeeded = () => { failures.current = 0; retryAt.current = 0 }
 
       if (currentStatus.localDirty) {
         console.info('[Sync] auto-push:trigger', { reason })
         try {
           const result = await pushToSyncAndRefresh(false)
+          succeeded()
           if (result.status === 'blocked') {
             recordSyncAttention('push', blockedPushMessage(result.reason))
           }
         } catch (error: unknown) {
+          failed()
           recordSyncAttention(
             'push',
             error instanceof Error ? error.message : 'Automatic push failed.',
@@ -62,7 +84,9 @@ export const useAutoSync = (status: AutoSyncStatus) => {
       console.info('[Sync] auto-pull:trigger', { reason })
       try {
         await pullFromSyncAndRefresh({ force: false })
+        succeeded()
       } catch (error: unknown) {
+        failed()
         recordSyncAttention(
           'pull',
           error instanceof Error ? error.message : 'Automatic pull failed.',
@@ -97,7 +121,7 @@ export const useAutoSync = (status: AutoSyncStatus) => {
   useEffect(() => {
     console.info('[Sync] auto-sync:event', { reason: 'start' })
     void maybeAutoSync('start')
-  }, [maybeAutoSync, status.connected, status.targetName])
+  }, [maybeAutoSync, status.connected, status.targetName, provider])
 
   useEffect(() => {
     if (!status.connected || !status.targetName) return
@@ -106,10 +130,10 @@ export const useAutoSync = (status: AutoSyncStatus) => {
       if (document.visibilityState !== 'visible') return
       console.info('[Sync] auto-sync:event', { reason: 'interval' })
       void maybeAutoSync('interval')
-    }, AUTO_SYNC_INTERVAL_MS)
+    }, intervalMs)
 
     return () => window.clearInterval(intervalId)
-  }, [maybeAutoSync, status.connected, status.targetName])
+  }, [maybeAutoSync, status.connected, status.targetName, intervalMs])
 
   useEffect(() => {
     const handleOnline = () => {
@@ -128,7 +152,7 @@ export const useAutoSync = (status: AutoSyncStatus) => {
       backgroundedAt.current = null
       if (
         startedAt === null ||
-        Date.now() - startedAt < FOREGROUND_BACKGROUND_MIN_MS
+        (statusRef.current.provider !== 'onedrive' && Date.now() - startedAt < FOREGROUND_BACKGROUND_MIN_MS)
       ) {
         return
       }
