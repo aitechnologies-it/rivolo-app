@@ -59,6 +59,15 @@ const openSyncRow = async (id: string) => {
 }
 
 describe('SyncSection', () => {
+  it('opens OneDrive on a notification request and lets the user collapse and reopen it', async () => {
+    const { rerender } = render(<SyncSection {...baseProps} provider="onedrive" openRequest={1} />)
+    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeVisible()
+    await openSyncRow('onedrive')
+    expect(screen.queryByLabelText('Shared file link or OneDrive path')).not.toBeInTheDocument()
+    rerender(<SyncSection {...baseProps} provider="onedrive" openRequest={2} />)
+    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeVisible()
+  })
+
   it('exposes a shared OneDrive target in Basic mode and disables sync while disconnected', async () => {
     render(<SyncSection {...baseProps} provider="onedrive" targetDraft="https://1drv.ms/u/shared" />)
     await openSyncRow('onedrive')

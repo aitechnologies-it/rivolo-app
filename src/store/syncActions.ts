@@ -3,6 +3,7 @@ import { SYNC_PROVIDER_LABELS } from '../lib/syncState'
 import { claimPrimaryTabForSync, getTabSyncBlockReason } from '../lib/tabSyncCoordinator'
 import { useDaysStore } from './useDaysStore'
 import { useSyncStore } from './useSyncStore'
+import { getPendingEditorDayIds } from '../lib/pendingEditorSaves'
 
 type SyncQueueOperation = 'pull' | 'push'
 
@@ -90,10 +91,16 @@ export const pullFromSyncAndRefresh = async (options?: {
       allowUnsafeImport: options?.allowUnsafeImport,
     })
     if (result.status === 'pulled') {
-      await useDaysStore.getState().loadTimeline()
+      if (useSyncStore.getState().activeProvider === 'onedrive') {
+        await useDaysStore.getState().loadTimeline({ preserveWindow: true })
+      } else {
+        await useDaysStore.getState().loadTimeline()
+      }
     }
     await useSyncStore.getState().loadState()
-    clearSyncAttention()
+    if (result.status === 'pulled' || (!getPendingEditorDayIds().size && !(await getActiveProviderStatus()).localDirty)) {
+      clearSyncAttention()
+    }
     return result
   })
 
@@ -101,10 +108,15 @@ export const pushToSyncAndRefresh = async (force = false) =>
   enqueueSyncOperation('push', async () => {
     requirePrimarySyncTab()
     const result = await pushToSync(force)
+    if (result.status === 'pushed' && result.localUpdated) {
+      await useDaysStore.getState().loadTimeline({ preserveWindow: true })
+    }
     await useSyncStore.getState().loadState()
     if (result.status === 'pushed' && result.attention) {
       recordSyncAttention('push', result.attention)
-    } else if (result.status !== 'blocked') {
+    } else if (result.status === 'pushed' ||
+      (result.status === 'clean' && useSyncStore.getState().syncAttention?.operation !== 'pull' &&
+        !getPendingEditorDayIds().size && !(await getActiveProviderStatus()).localDirty)) {
       clearSyncAttention()
     }
     return result

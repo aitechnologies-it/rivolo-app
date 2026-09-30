@@ -1,3 +1,4 @@
+import { useSyncPanelNavigation } from './settings/useSyncPanelNavigation'
 import { useOneDriveStore } from '../store/useOneDriveStore'
 import { validateOneDriveTarget } from '../lib/oneDrive'
 import { useEffect, useMemo, useState } from 'react'
@@ -18,7 +19,6 @@ import { getSetupNotices } from '../lib/setupAttention'
 import { buildAttentionItems } from '../lib/attention'
 import { DEFAULT_GOOGLE_DRIVE_FILE_NAME, getGoogleDrivePath } from '../lib/googleDriveState'
 import { claimPrimaryTabForSync } from '../lib/tabSyncCoordinator'
-import type { SyncProviderId } from '../lib/sync'
 import { useTabSyncState } from '../hooks/useTabSyncState'
 import { useDatabasePersistFailure } from '../hooks/useDatabasePersistFailure'
 import { useSyncProviderActions } from './settings/useSyncProviderActions'
@@ -105,12 +105,11 @@ export default function Settings() {
 
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
   const [online, setOnline] = useState(navigator.onLine)
-  const [syncProviderDraft, setSyncProviderDraft] = useState<SyncProviderId | null>(null)
   const [dropboxPathDraft, setDropboxPathDraft] = useState<string | null>(null)
   const [googleDriveFileNameDraft, setGoogleDriveFileNameDraft] = useState<string | null>(null)
   const [initialLoadDone, setInitialLoadDone] = useState(false)
 
-  const selectedSyncProvider = syncProviderDraft ?? activeProvider ?? 'dropbox'
+  const { provider: selectedSyncProvider, selectProvider: setSyncProviderDraft, openPanel: openSyncPanel, openRequest: syncOpenRequest } = useSyncPanelNavigation(activeProvider, initialLoadDone)
   const settingsView = useSettingsStore((state) => state.settingsView)
   const updateSettingsView = useSettingsStore((state) => state.updateSettingsView)
   const showAdvanced = settingsView === 'advanced'
@@ -336,6 +335,7 @@ export default function Settings() {
   const attentionItems = buildAttentionItems({
     persistFailureMessage,
     syncAttentionMessage: syncAttention?.message ?? null,
+    activeSyncProvider: activeProvider,
     setupNotices,
   })
 
@@ -351,7 +351,7 @@ export default function Settings() {
       document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [initialLoadDone, location.hash])
+  }, [initialLoadDone, location.hash, location.key, syncOpenRequest])
 
   return (
     <div className="space-y-4">
@@ -374,7 +374,10 @@ export default function Settings() {
           <AttentionBanner
             key={item.id}
             item={item}
-            onOpen={() => scrollToSection(item.settingsSectionId)}
+            onOpen={() => {
+              if (item.settingsSectionId === 'settings-sync') openSyncPanel(item.syncProvider ?? activeProvider)
+              window.requestAnimationFrame(() => scrollToSection(item.settingsSectionId))
+            }}
             onDismiss={
               item.dismissibleSetupNoticeId
                 ? () => {
@@ -415,6 +418,7 @@ export default function Settings() {
         <SyncSection
           activeProvider={activeProvider}
           provider={selectedSyncProvider}
+          openRequest={syncOpenRequest}
           summaries={{
             onedrive: oneDriveSummary,
             dropbox: dropboxSummary,

@@ -5,6 +5,7 @@ export type OneDriveState = {
   filePath: string | null
   lastRemoteRev: string | null
   lastPushedHash: string | null
+  mergeBaseContent: string | null
   lastSyncAt: number | null
   localDirty: boolean
   localRevision: number
@@ -18,6 +19,7 @@ const DEFAULT_STATE: OneDriveState = {
   filePath: '/rivolo-notes.md',
   lastRemoteRev: null,
   lastPushedHash: null,
+  mergeBaseContent: null,
   lastSyncAt: null,
   localDirty: false,
   localRevision: 0,
@@ -73,6 +75,7 @@ export const updateOneDriveFilePath = async (filePath: string) => {
       localRevision: pathChanged ? current.localRevision + 1 : current.localRevision,
       lastRemoteRev: pathChanged ? null : current.lastRemoteRev,
       lastPushedHash: pathChanged ? null : current.lastPushedHash,
+      mergeBaseContent: pathChanged ? null : current.mergeBaseContent,
       lastSyncAt: pathChanged ? null : current.lastSyncAt,
     }
 
@@ -96,12 +99,14 @@ export const finalizeOneDrivePushState = async (
   remoteRev: string,
   sourceRevision: number,
   pushedHash?: string | null,
+  mergeBaseContent?: string,
 ) => {
   await enqueueOneDriveStateWrite((current) => {
     const next = {
       ...current,
       lastRemoteRev: remoteRev,
       lastPushedHash: pushedHash === undefined ? current.lastPushedHash : pushedHash,
+      mergeBaseContent: mergeBaseContent ?? current.mergeBaseContent,
       lastSyncAt: Date.now(),
       localDirty: current.localRevision === sourceRevision ? false : current.localDirty,
     }

@@ -32,13 +32,17 @@ export const useSyncStore = create<SyncViewState>((set) => ({
   loadState: async () => {
     const activeProvider = await getActiveProviderId()
     const status = await getActiveProviderStatus()
-    set({ activeProvider, status })
+    set((current) => ({ activeProvider, status,
+      syncAttention: current.activeProvider === activeProvider ? current.syncAttention : null,
+    }))
   },
 
   setActiveProvider: async (providerId: SyncProviderId | null) => {
     await setActiveProviderId(providerId)
     const status = providerId ? await getActiveProviderStatus() : getEmptySyncStatus()
-    set({ activeProvider: providerId, status })
+    set((current) => ({ activeProvider: providerId, status,
+      syncAttention: current.activeProvider === providerId ? current.syncAttention : null,
+    }))
   },
 
   setSyncing: (syncing: boolean, operation?: SyncOperation) => {

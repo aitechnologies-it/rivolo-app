@@ -225,8 +225,26 @@ describe('AppShell attention and stale tab states', () => {
     expect(screen.getByRole('dialog', { name: 'Items needing attention' })).toBeVisible()
     expect(screen.getByRole('link', { name: /Sync needs attention/ })).toHaveAttribute(
       'href',
-      '/settings#settings-sync',
+      '/settings?syncProvider=google-drive#settings-sync',
     )
+  })
+
+  it.each([false, true])('removes the OneDrive notification after recovery (narrow viewport: %s)', async (isNarrow) => {
+    stores.viewport.isNarrow = isNarrow
+    stores.tabSync = { isPrimary: true, databaseStale: false }
+    stores.settings.llmSecrets = { gemini: { apiKey: 'test-key' } }
+    stores.sync.activeProvider = 'onedrive'
+    stores.sync.syncAttention = { operation: 'push', message: 'OneDrive changed remotely.', at: 1 }
+    const app = <MemoryRouter initialEntries={['/']}><Routes><Route path="/" element={<AppShell />} /></Routes></MemoryRouter>
+    const { rerender } = render(app)
+    await userEvent.click(screen.getByRole('button', { name: '1 item needs attention' }))
+    expect(screen.getByRole('link', { name: /Sync needs attention/ })).toHaveAttribute(
+      'href', '/settings?syncProvider=onedrive#settings-sync',
+    )
+    stores.sync.syncAttention = null
+    rerender(<MemoryRouter initialEntries={['/']}><Routes><Route path="/" element={<AppShell />} /></Routes></MemoryRouter>)
+    expect(screen.queryByRole('button', { name: '1 item needs attention' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Items needing attention' })).not.toBeInTheDocument()
   })
 
   it('shows and individually dismisses both new-user setup notices on Timeline', async () => {

@@ -140,7 +140,7 @@ const completeAuth = async (code: string, returnedState: string | null) => {
 
   const token = await exchangeAuthorizationCode(code, oauthSession.codeVerifier)
   await updateOneDriveState({ connected: true, accountId: null, accountEmail: null, accountName: null,
-    lastRemoteRev: null, lastPushedHash: null, lastSyncAt: null })
+    lastRemoteRev: null, lastPushedHash: null, mergeBaseContent: null, lastSyncAt: null })
   try {
     const account = await fetchOneDriveAccount(token.accessToken)
     await updateOneDriveState({

@@ -36,6 +36,7 @@ export type SyncPushResult =
   | {
       status: 'pushed'
       attention?: string
+      localUpdated?: boolean
     }
 
 export type SyncProvider = {

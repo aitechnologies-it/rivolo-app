@@ -29,6 +29,45 @@ describe('useAutoSync tab coordination', () => {
     vi.useRealTimers()
   })
 
+  it('polls OneDrive every five seconds, pauses hidden/offline, and refreshes on return', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    renderHook(() => useAutoSync({ connected: true, targetName: '/notes.md', localDirty: false }, 'onedrive'))
+    await act(async () => Promise.resolve())
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    visibility.mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    visibility.mockReturnValue('visible')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => Promise.resolve())
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(3)
+    online.mockReturnValue(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(3)
+    visibility.mockRestore()
+    online.mockRestore()
+  })
+
+  it('backs off failed OneDrive polling and recovers', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+    syncActions.pullFromSyncAndRefresh.mockRejectedValueOnce(new Error('Network failed'))
+    renderHook(() => useAutoSync({ connected: true, targetName: '/notes.md', localDirty: false }, 'onedrive'))
+    await act(async () => Promise.resolve())
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(3)
+  })
+
   it('does not auto-pull when another tab owns the lease', () => {
     coordinator.getTabSyncBlockReason.mockReturnValue(
       'Sync is paused in this tab because another Rivolo tab is active.',

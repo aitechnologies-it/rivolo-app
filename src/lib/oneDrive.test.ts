@@ -16,7 +16,7 @@ const item = (eTag = 'v1') => ({ id: 'shared-file', name: 'notes.md', eTag, file
 const rev = '/drives/owner-drive/items/shared-file:v1'
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 const initial = { connected: true, filePath: 'https://1drv.ms/u/s!shared', lastRemoteRev: rev,
-  localDirty: true, localRevision: 1, lastPushedHash: null }
+  localDirty: true, localRevision: 1, lastPushedHash: null, mergeBaseContent: null }
 const content = '<!-- day:2026-09-24 -->\nThursday\n---\n\nCaffè ☕'
 
 beforeEach(() => {
@@ -60,17 +60,78 @@ describe('OneDrive shared file sync', () => {
   })
 
   it.each([409, 412])('retains local edits on upload conflict %s', async (status) => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item())).mockResolvedValueOnce(json({}, status))
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) => init?.method === 'POST' ? json({}, status) : json(item()))
     vi.stubGlobal('fetch', fetchMock)
     expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
     expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, lastRemoteRev: rev })
   })
 
-  it('blocks a remote revision changed on another device before starting upload', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(json(item('v2')))
+  it('merges a newer remote notebook before uploading and refreshes local content', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
+    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice new`)
+    const remoteContent = `${content}\n\nBob new`
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(item('v2')))
+      .mockResolvedValueOnce(new Response(remoteContent))
+      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
+      .mockResolvedValueOnce(json(item('v3'), 200))
     vi.stubGlobal('fetch', fetchMock)
+    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'pushed', localUpdated: true })
+    expect(fetchMock.mock.calls[2][1].headers['If-Match']).toBe('v2')
+    const uploaded = new TextDecoder().decode(fetchMock.mock.calls[3][1].body)
+    expect(uploaded).toContain('Bob new\n\nAlice new')
+    expect(mocks.importMd).toHaveBeenCalledWith(uploaded, expect.objectContaining({ allowDeletedDays: true }))
+    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false, mergeBaseContent: uploaded })
+  })
+
+  it('keeps old clients safe when a changed remote notebook has no merge base yet', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(item('v2'))))
     expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-downloads and merges again when another writer changes the file before upload', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
+    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice`)
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(item('v2')))
+      .mockResolvedValueOnce(new Response(`${content}\n\nBob`))
+      .mockResolvedValueOnce(json({}, 412))
+      .mockResolvedValueOnce(json(item('v3')))
+      .mockResolvedValueOnce(new Response(`${content}\n\nBob\n\nCarol`))
+      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
+      .mockResolvedValueOnce(json(item('v4')))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await (await import('./oneDrive')).pushToOneDrive()).toMatchObject({ status: 'pushed', localUpdated: true })
+    expect(new TextDecoder().decode(fetchMock.mock.calls[6][1].body)).toContain('Bob\n\nCarol\n\nAlice')
+  })
+
+  it('preserves typing during a merged upload and includes it in the next merge without duplicating additions', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
+    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice`)
+    let merged = ''
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json(item('v2')))
+      .mockResolvedValueOnce(new Response(`${content}\n\nBob`))
+      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
+      .mockImplementationOnce(async (_url, init) => {
+        merged = new TextDecoder().decode(init.body)
+        await (await import('./oneDriveState')).markOneDriveLocalDirty()
+        mocks.exportMd.mockResolvedValue(`${content}\n\nAlice\n\nAlice later`)
+        return json(item('v3'))
+      })
+    vi.stubGlobal('fetch', fetchMock)
+    const { pushToOneDrive } = await import('./oneDrive')
+    expect(await pushToOneDrive()).toMatchObject({ status: 'pushed', attention: expect.any(String) })
+    expect(mocks.importMd).not.toHaveBeenCalled()
+    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, mergeBaseContent: `${content}\n\nAlice` })
+    fetchMock.mockResolvedValueOnce(json(item('v3')))
+      .mockResolvedValueOnce(new Response(merged))
+      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
+      .mockResolvedValueOnce(json(item('v4')))
+    expect(await pushToOneDrive()).toMatchObject({ status: 'pushed', localUpdated: true })
+    const next = new TextDecoder().decode(fetchMock.mock.calls[7][1].body)
+    expect(next).toContain('Bob\n\nAlice\n\nAlice later')
+    expect(next.match(/Bob/g)).toHaveLength(1)
+    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false, mergeBaseContent: next })
   })
 
   it('never overwrites an existing untracked shared file on a normal push', async () => {
@@ -79,7 +140,7 @@ describe('OneDrive shared file sync', () => {
     expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
   })
 
-  it('allows an explicit force push but still guards changes since the metadata check', async () => {
+  it('allows an explicit force push to replace the remote notebook', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(json(item('v2')))
       .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
       .mockResolvedValueOnce(json(item('v3'), 200))
@@ -113,10 +174,60 @@ describe('OneDrive shared file sync', () => {
     vi.stubGlobal('fetch', fetchMock)
     expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'pulled' })
     expect(fetchMock.mock.calls[1]).toEqual(['https://download.example/notes', { cache: 'no-store' }])
-    expect(mocks.importMd).toHaveBeenCalledWith(content, { replace: true, markDirty: false, allowUnsafeImport: undefined })
+    expect(mocks.importMd).toHaveBeenCalledWith(content, expect.objectContaining({ replace: true, markDirty: false, allowUnsafeImport: undefined, allowDeletedDays: true, beforeReplace: expect.any(Function) }))
     expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false })
     expect(mocks.settings.get('dropbox.state')).toMatchObject({ localDirty: true })
     expect(mocks.settings.get('google-drive.state')).toMatchObject({ localDirty: true })
+  })
+
+  it('does not download an unchanged remote notebook', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, localDirty: false, mergeBaseContent: content })
+    const fetchMock = vi.fn().mockResolvedValueOnce(json(item()))
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'noop' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(mocks.importMd).not.toHaveBeenCalled()
+  })
+
+  it('waits for pending editor drafts before downloading', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const unregister = (await import('./pendingEditorSaves')).registerPendingEditorSaves(() => ['2026-09-24'])
+    try {
+      expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'noop' })
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally { unregister() }
+  })
+
+  it('detects typing during download before the debounced save reaches the database', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockImplementationOnce(async () => {
+      (await import('./pendingEditorSaves')).noteEditorChange()
+      return new Response(content)
+    }))
+    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('Notes changed during download')
+    expect(mocks.importMd).not.toHaveBeenCalled()
+  })
+
+  it('rechecks edits after backup creation and before replacing notes', async () => {
+    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockResolvedValueOnce(new Response(content)))
+    mocks.importMd.mockImplementationOnce(async (_content, options) => {
+      (await import('./pendingEditorSaves')).noteEditorChange()
+      await options.beforeReplace()
+    })
+    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('Notes changed during download')
+    expect(mocks.settings.get('onedrive.state')).toMatchObject({ lastRemoteRev: rev })
+  })
+
+  it('honors Retry-After before issuing another metadata request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '120' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { pushToOneDrive } = await import('./oneDrive')
+    await expect(pushToOneDrive()).rejects.toThrow('OneDrive is busy')
+    await expect(pushToOneDrive()).rejects.toThrow('OneDrive is busy')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('aborts a pull if the user edits while the download is running', async () => {
