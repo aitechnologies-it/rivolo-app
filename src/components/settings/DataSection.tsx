@@ -144,6 +144,14 @@ export default function DataSection({
                     </a>
                     .
                   </>
+                ) : cloudHistory.provider === 'onedrive' ? (
+                  <>
+                    Open the shared file in{' '}
+                    <a href={cloudHistory.url} target="_blank" rel="noreferrer" className="underline hover:text-slate-700">
+                      OneDrive
+                    </a>{' '}
+                    to view its version history.
+                  </>
                 ) : (
                   <>
                     Google Drive also keeps older versions of {cloudHistory.fileName} for 30 days:{' '}

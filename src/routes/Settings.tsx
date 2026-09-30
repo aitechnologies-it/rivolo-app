@@ -1,3 +1,5 @@
+import { useOneDriveStore } from '../store/useOneDriveStore'
+import { validateOneDriveTarget } from '../lib/oneDrive'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import SegmentedControl from '../components/SegmentedControl'
@@ -67,6 +69,10 @@ export default function Settings() {
   const monospaceFont = useSettingsStore((state) => state.monospaceFont)
   const titleFont = useSettingsStore((state) => state.titleFont)
   const dismissedSetupNotices = useSettingsStore((state) => state.dismissedSetupNotices)
+  const oneDrive = useOneDriveStore()
+  const loadOneDriveState = oneDrive.loadState
+  const [oneDriveTargetDraft, setOneDriveTargetDraft] = useState<string | null>(null)
+  const oneDriveTarget = oneDriveTargetDraft ?? oneDrive.filePath
   const dropboxFilePath = useDropboxStore((state) => state.filePath)
   const dropboxRemoteRev = useDropboxStore((state) => state.lastRemoteRev)
   const dropboxLastSyncAt = useDropboxStore((state) => state.lastSyncAt)
@@ -116,7 +122,9 @@ export default function Settings() {
   const isGoogleFileNameDirty = googleFileName.trim() !== savedGoogleDriveFileName
 
   const cloudHistory: CloudVersionHistory | null =
-    activeProvider === 'dropbox' && dropboxHasAuth
+    activeProvider === 'onedrive' && oneDrive.hasAuth
+      ? { provider: 'onedrive', fileName: 'shared Markdown file', url: 'https://onedrive.live.com/' }
+      : activeProvider === 'dropbox' && dropboxHasAuth
       ? {
           provider: 'dropbox',
           fileName: savedDropboxPath.split('/').pop() || DEFAULT_DROPBOX_PATH.slice(1),
@@ -139,11 +147,12 @@ export default function Settings() {
   useEffect(() => {
     void Promise.all([
       loadSettings(),
+      loadOneDriveState(),
       loadDropboxState(),
       loadGoogleDriveState(),
       loadSyncState(),
     ]).finally(() => setInitialLoadDone(true))
-  }, [loadDropboxState, loadGoogleDriveState, loadSettings, loadSyncState])
+  }, [loadOneDriveState, loadDropboxState, loadGoogleDriveState, loadSettings, loadSyncState])
 
   useEffect(() => {
     if (selectedSyncProvider !== 'google-drive') return
@@ -214,13 +223,21 @@ export default function Settings() {
     ],
   )
 
-  const selectedSummary = selectedSyncProvider === 'dropbox' ? dropboxSummary : googleDriveSummary
-  const selectedTarget = selectedSyncProvider === 'dropbox' ? dropboxPath : googleFileName
+  const oneDriveSummary = {
+    connected: oneDrive.hasAuth,
+    lastSync: formatSyncTime(oneDrive.lastSyncAt),
+    remoteVersion: oneDrive.lastRemoteRev ?? '—',
+    dirty: oneDrive.localDirty,
+    account: oneDrive.accountEmail ?? oneDrive.accountName ?? '—',
+    target: oneDrive.filePath,
+  }
+  const selectedSummary = selectedSyncProvider === 'onedrive' ? oneDriveSummary : selectedSyncProvider === 'dropbox' ? dropboxSummary : googleDriveSummary
+  const selectedTarget = selectedSyncProvider === 'onedrive' ? oneDriveTarget : selectedSyncProvider === 'dropbox' ? dropboxPath : googleFileName
   const selectedTargetDirty =
-    selectedSyncProvider === 'dropbox' ? isDropboxPathDirty : isGoogleFileNameDirty
+    selectedSyncProvider === 'onedrive' ? oneDriveTarget.trim() !== oneDrive.filePath : selectedSyncProvider === 'dropbox' ? isDropboxPathDirty : isGoogleFileNameDirty
 
   const loadProviderStates = async () => {
-    await Promise.all([loadDropboxState(), loadGoogleDriveState()])
+    await Promise.all([loadOneDriveState(), loadDropboxState(), loadGoogleDriveState()])
   }
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,11 +262,13 @@ export default function Settings() {
     event.target.value = ''
   }
 
+  const exportFileName = activeSyncStatus.targetName?.startsWith('https://')
+    ? 'rivolo-notes.md'
+    : (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
+
   const handleExport = async () => {
     const content = await exportMarkdownFromDb()
-    const filename =
-      (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
-    await shareOrDownload(filename, content)
+    await shareOrDownload(exportFileName, content)
   }
 
   const handleSaveSyncTarget = async () => {
@@ -260,7 +279,15 @@ export default function Settings() {
       return
     }
 
-    if (selectedSyncProvider === 'dropbox') {
+    if (selectedSyncProvider === 'onedrive') {
+      try {
+        await oneDrive.updateFilePath(validateOneDriveTarget(oneDriveTarget))
+        setOneDriveTargetDraft(null)
+      } catch (error) {
+        setSyncStatus(error instanceof Error ? error.message : 'Invalid OneDrive target.')
+        return
+      }
+    } else if (selectedSyncProvider === 'dropbox') {
       await updateFilePath(dropboxPath.trim() || DEFAULT_DROPBOX_PATH)
       setDropboxPathDraft(null)
     } else {
@@ -389,6 +416,7 @@ export default function Settings() {
           activeProvider={activeProvider}
           provider={selectedSyncProvider}
           summaries={{
+            onedrive: oneDriveSummary,
             dropbox: dropboxSummary,
             'google-drive': googleDriveSummary,
           }}
@@ -410,7 +438,8 @@ export default function Settings() {
           onDisconnect={handleDisconnect}
           onActivate={handleActivate}
           onTargetChange={(value) => {
-            if (selectedSyncProvider === 'dropbox') setDropboxPathDraft(value)
+            if (selectedSyncProvider === 'onedrive') setOneDriveTargetDraft(value)
+            else if (selectedSyncProvider === 'dropbox') setDropboxPathDraft(value)
             else setGoogleDriveFileNameDraft(value)
           }}
           onSaveTarget={handleSaveSyncTarget}
@@ -456,9 +485,7 @@ export default function Settings() {
 
       <div id="settings-data" className="mx-3 scroll-mt-2 sm:mx-0 sm:scroll-mt-20">
         <DataSection
-          exportFileName={
-            (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
-          }
+          exportFileName={exportFileName}
           importStatus={importStatus}
           onImport={handleImport}
           onExport={handleExport}

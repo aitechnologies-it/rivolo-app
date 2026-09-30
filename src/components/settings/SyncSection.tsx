@@ -79,9 +79,11 @@ export default function SyncSection({
   const summary = summaries[provider]
   const label = SYNC_PROVIDER_LABELS[provider]
   const isActive = activeProvider === provider
-  const targetLabel = provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
+  const targetLabel = provider === 'onedrive' ? 'Shared file link or OneDrive path' : provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
   const targetHint =
-    provider === 'dropbox'
+    provider === 'onedrive'
+      ? 'Rivolo automatically uses /rivolo-notes.md in your OneDrive when no link or path is entered. To use the same file across different accounts, share that file and paste its sharing link on the other devices. Each Microsoft account needs edit access. Concurrent edits require choosing which copy to keep.'
+      : provider === 'dropbox'
       ? 'Rivolo reads and writes this Markdown path in Dropbox.'
       : 'Rivolo creates this visible Markdown file in the /rivolo folder in My Drive and tracks it by file ID.'
   const syncControlsDisabled = syncBusy || syncPaused
@@ -183,7 +185,7 @@ export default function SyncSection({
                   {advanced && (
                     <>
                       <div className="min-w-0 break-words">File: {summary.target || '—'}</div>
-                      <div>Remote version: {summary.remoteVersion}</div>
+                      <div className="min-w-0 break-all">Remote version: {summary.remoteVersion}</div>
                       <div>Local changes: {summary.dirty ? 'Not synced' : 'Synced'}</div>
                       <div>Network: {online ? 'Online' : 'Offline'}</div>
                       <div>Tab sync: {syncTabStatus}</div>
@@ -255,7 +257,7 @@ export default function SyncSection({
                   )}
                 </div>
 
-                {advanced && (
+                {(advanced || provider === 'onedrive') && (
                   <>
                     <p className="break-words text-xs text-slate-500">{targetHint}</p>
 
@@ -270,9 +272,10 @@ export default function SyncSection({
                         <input
                           id="sync-target"
                           autoComplete="off"
+                          placeholder={provider === 'onedrive' ? '/rivolo-notes.md (automatic)' : undefined}
                           className={inputClass}
                           value={targetDraft}
-                          disabled={syncPaused}
+                          disabled={syncControlsDisabled}
                           onChange={(event) => onTargetChange(event.target.value)}
                         />
                         <button

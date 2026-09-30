@@ -1,3 +1,4 @@
+import { oneDriveProvider } from './oneDrive'
 import { dropboxProvider } from './dropbox'
 import { googleDriveProvider } from './googleDrive'
 import { getSyncState, updateSyncState } from './syncState'
@@ -60,6 +61,7 @@ const EMPTY_STATUS: SyncStatus = {
 
 const providers: Record<SyncProviderId, SyncProvider> = {
   dropbox: dropboxProvider,
+  onedrive: oneDriveProvider,
   'google-drive': googleDriveProvider,
 }
 

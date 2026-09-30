@@ -21,6 +21,7 @@ const notConnectedSummary: SyncProviderSummary = {
 const bothConnected = {
   dropbox: connectedSummary,
   'google-drive': connectedSummary,
+  onedrive: notConnectedSummary,
 }
 
 const baseProps = {
@@ -58,13 +59,28 @@ const openSyncRow = async (id: string) => {
 }
 
 describe('SyncSection', () => {
-  it('starts with both provider rows collapsed when no sync provider is active', () => {
+  it('exposes a shared OneDrive target in Basic mode and disables sync while disconnected', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" targetDraft="https://1drv.ms/u/shared" />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared file link or OneDrive path')).toHaveValue('https://1drv.ms/u/shared')
+    expect(screen.getByRole('button', { name: 'Connect OneDrive' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Pull from OneDrive' })).toBeDisabled()
+    expect(screen.getByText(/Each Microsoft account needs edit access/)).toBeVisible()
+  })
+
+  it('disables target editing during an active transfer', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" syncBusy />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeDisabled()
+  })
+
+  it('starts with all provider rows collapsed when no sync provider is active', () => {
     render(<SyncSection {...baseProps} activeProvider={null} />)
 
     const rowHeaders = screen
       .getAllByRole('button')
       .filter((button) => button.getAttribute('aria-controls')?.startsWith('sync-panel-'))
-    expect(rowHeaders).toHaveLength(2)
+    expect(rowHeaders).toHaveLength(3)
     for (const header of rowHeaders) {
       expect(header).toHaveAttribute('aria-expanded', 'false')
     }
@@ -372,6 +388,7 @@ describe('SyncSection', () => {
         summaries={{
           dropbox: notConnectedSummary,
           'google-drive': notConnectedSummary,
+          onedrive: notConnectedSummary,
         }}
       />,
     )

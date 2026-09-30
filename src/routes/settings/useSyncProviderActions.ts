@@ -1,3 +1,4 @@
+import { startOneDriveAuth } from '../../lib/oneDriveAuth'
 import { useState } from 'react'
 import { startDropboxAuth } from '../../lib/dropbox'
 import { prepareGoogleDriveAuth, startGoogleDriveAuth } from '../../lib/googleDriveAuth'
@@ -67,6 +68,13 @@ export const useSyncProviderActions = ({
       return
     }
     if (!requireSafeSyncTab()) return
+
+    if (provider === 'onedrive') {
+      void startOneDriveAuth().catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'OneDrive connect failed.')
+      })
+      return
+    }
 
     if (provider === 'dropbox') {
       void startDropboxAuth().catch((error) => {
