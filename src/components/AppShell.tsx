@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import BottomTrayRow from './app-shell/BottomTrayRow'
 import AttentionPopover from './app-shell/AttentionPopover'
 import ShortcutsPopover from './app-shell/ShortcutsPopover'
+import AppLogo from './AppLogo'
 import { TIMELINE_NEW_CHAT_EVENT, TIMELINE_SCROLL_TODAY_EVENT } from '../lib/timelineEvents'
 import { isPrimaryModifierPressed } from '../lib/device'
 import { useIsNarrowViewport } from '../hooks/useIsNarrowViewport'
@@ -42,6 +43,7 @@ export default function AppShell() {
   const dismissedSetupNotices = useSettingsStore((state) => state.dismissedSetupNotices)
   const dismissSetupNotice = useSettingsStore((state) => state.dismissSetupNotice)
   const themePreference = useSettingsStore((state) => state.themePreference)
+  const appIdentity = useSettingsStore((state) => state.appIdentity)
   const updateThemePreference = useSettingsStore((state) => state.updateThemePreference)
   const wallpaper = useSettingsStore((state) => state.wallpaper)
   const highlightInputMode = useSettingsStore((state) => state.highlightInputMode)
@@ -408,7 +410,7 @@ export default function AppShell() {
         }`}
       />
       <header
-        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto grid h-16 grid-cols-[1fr_auto_1fr] items-center px-2 sm:fixed sm:px-0"
+        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 sm:fixed sm:gap-0 sm:px-0"
       >
         {showMobileChatHeaderBlur && (
           <div
@@ -449,13 +451,13 @@ export default function AppShell() {
         </div>
         <NavLink
           to="/"
-          className={`app-logo-link relative z-10 justify-self-center ${
+          className={`app-logo-link relative z-10 inline-flex min-h-11 items-center justify-self-center ${
             isLogoCurrentFast ? 'logo-current-fast' : ''
           }`}
           aria-label="Home"
           onClick={handleLogoClick}
         >
-          <img src="/logo.png" alt="Rivolo" className="app-logo h-10 w-auto" />
+          <AppLogo identity={appIdentity} />
           <svg
             className="logo-current"
             viewBox="0 0 120 12"

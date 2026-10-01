@@ -2,8 +2,8 @@ import { mergeConfig } from 'vite'
 import { configDefaults, defineConfig } from 'vitest/config'
 import viteConfig from './vite.config'
 
-export default mergeConfig(
-  viteConfig,
+export default defineConfig((environment) => mergeConfig(
+  typeof viteConfig === 'function' ? viteConfig(environment) : viteConfig,
   defineConfig({
     test: {
       environment: 'jsdom',
@@ -16,4 +16,4 @@ export default mergeConfig(
       exclude: [...configDefaults.exclude, 'tests/agentic-qa-tests/**'],
     },
   }),
-)
+))
