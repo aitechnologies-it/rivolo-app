@@ -7,6 +7,8 @@ import { todoKeymap, todoPointerHandler } from '../../lib/editor/todoExtensions'
 import { wrapSelectionOnDelimiter } from '../../lib/editor/wrapSelection'
 import { editorHighlights } from '../../lib/editorHighlights'
 import type { Day } from '../../lib/dayRepository'
+import { useSyncStore } from '../../store/useSyncStore'
+import DayBlame from './DayBlame'
 
 type DayEditorCardProps = {
   day: Day
@@ -42,6 +44,9 @@ type DayEditorCardProps = {
 }
 
 type DayEditorCardHeaderProps = {
+  showBlameButton: boolean
+  blameOpen: boolean
+  onToggleBlame: () => void
   day: Day
   isFuture: boolean
   isToday: boolean
@@ -70,6 +75,9 @@ const getDayTitleSizeClass = (isToday: boolean, isYesterday: boolean, isTomorrow
 }
 
 const DayEditorCardHeader = ({
+  showBlameButton,
+  blameOpen,
+  onToggleBlame,
   day,
   isFuture,
   isToday,
@@ -137,8 +145,8 @@ const DayEditorCardHeader = ({
   }
 
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="relative flex items-center gap-2 text-left" onClick={handleOpenDatePicker}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="relative flex min-w-0 items-center gap-2 text-left" onClick={handleOpenDatePicker}>
         <h3
           className={`day-title ${titleSizeClass} ${isFuture ? 'opacity-70' : ''}`}
           style={{ fontFamily: titleFontFamily }}
@@ -160,6 +168,14 @@ const DayEditorCardHeader = ({
         />
       </div>
       <div className="flex items-center gap-2">
+        {showBlameButton && <button
+          type="button"
+          className="flex h-11 min-w-11 items-center justify-center rounded-full border border-slate-200 bg-white px-2 text-xs text-slate-600 shadow-sm sm:h-8"
+          aria-label={`${blameOpen ? 'Hide' : 'Show'} line authors for ${day.dayId}`}
+          aria-expanded={blameOpen}
+          aria-controls={`day-blame-${day.dayId}`}
+          onClick={onToggleBlame}
+        >{blameOpen ? 'Edit' : 'Authors'}</button>}
         <div ref={menuRef} className="relative touch-actions">
           <button
             className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 sm:h-8 sm:w-8"
@@ -246,6 +262,9 @@ const DayEditorCard = memo(({
   registerEditor,
   registerDayRef,
 }: DayEditorCardProps) => {
+  const activeProvider = useSyncStore((state) => state.activeProvider)
+  const [blameOpen, setBlameOpen] = useState(false)
+  const showBlame = blameOpen && activeProvider === 'onedrive'
   const containerRef = useRef<HTMLDivElement | null>(null)
   const searchHighlight = useMemo(() => createHighlightPlugin(searchQuery), [searchQuery])
   const quoteHighlight = useMemo(() => (quote ? createHighlightPlugin(quote) : null), [quote])
@@ -362,6 +381,12 @@ const DayEditorCard = memo(({
       }`}
     >
       <DayEditorCardHeader
+        showBlameButton={activeProvider === 'onedrive'}
+        blameOpen={showBlame}
+        onToggleBlame={() => {
+          if (!showBlame) onBlur(day.dayId)
+          setBlameOpen(!showBlame)
+        }}
         day={day}
         isFuture={isFuture}
         isToday={isToday}
@@ -381,7 +406,8 @@ const DayEditorCard = memo(({
           {dateError}
         </div>
       )}
-      <div className="mt-3 overflow-hidden rounded-xl">
+      {showBlame && <div id={`day-blame-${day.dayId}`}><DayBlame dayId={day.dayId} content={day.contentMd} /></div>}
+      <div className={`mt-3 overflow-hidden rounded-xl${showBlame ? ' hidden' : ''}`}>
         {shouldMountEditor ? (
           <CodeMirror
             value={day.contentMd}

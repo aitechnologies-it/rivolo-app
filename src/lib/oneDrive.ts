@@ -3,7 +3,8 @@ import { authorizedOneDriveFetch, disconnectOneDriveAuth } from './oneDriveAuth'
 import { finalizeOneDrivePushState, getOneDriveState, updateOneDriveState } from './oneDriveState'
 import { markSyncLocalDirty } from './syncDirty'
 import { getEditorRevision, getPendingEditorDayIds } from './pendingEditorSaves'
-import { mergeOneDriveNotebooks } from './oneDriveMerge'
+import { mergeOneDriveNotebooksWithAuthors } from './oneDriveMerge'
+import { annotateLocalNotebook } from './oneDriveBlame'
 import { hashSyncContent } from './syncHash'
 import type { SyncProvider, SyncPullOptions, SyncPushResult, SyncStatus } from './sync'
 
@@ -177,7 +178,7 @@ export const pushToOneDrive = async (force = false): Promise<SyncPushResult> => 
   if (getPendingEditorDayIds().size) return { status: 'clean' }
   const editorRevision = getEditorRevision()
   const target = validateOneDriveTarget(state.filePath || DEFAULT_ONEDRIVE_PATH)
-  const localContent = await exportMarkdownFromDb()
+  const localContent = await annotateLocalNotebook(await exportMarkdownFromDb(), state.mergeBaseContent, state.accountName)
   const localHash = await hashSyncContent(localContent)
   for (let attempt = 0; attempt < 3; attempt++) {
     const metadata = await fetchMetadata(target)
@@ -194,7 +195,7 @@ export const pushToOneDrive = async (force = false): Promise<SyncPushResult> => 
       if (state.mergeBaseContent !== null) {
         const remoteContent = !remoteChanged && await hashSyncContent(state.mergeBaseContent) === state.lastPushedHash
           ? state.mergeBaseContent : await downloadFile(metadata)
-        content = mergeOneDriveNotebooks(state.mergeBaseContent, localContent, remoteContent)
+        content = await mergeOneDriveNotebooksWithAuthors(state.mergeBaseContent, localContent, remoteContent)
       }
       if (content === localContent && localHash === state.lastPushedHash && !remoteChanged) {
         await finalizeOneDrivePushState(revision(metadata), state.localRevision, localHash, localContent)
