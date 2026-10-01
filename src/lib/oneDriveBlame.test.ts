@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { annotateLocalNotebook, readNotebookAuthors, writeNotebookAuthors } from './oneDriveBlame'
+import { annotateLocalNotebook, readNotebookAuthors, writeNotebookAuthors, readNotebookAttribution, writeNotebookAttribution } from './oneDriveBlame'
 import { mergeOneDriveNotebooksWithAuthors } from './oneDriveMerge'
 import { exportMarkdown, parseMarkdown } from './markdown'
 import { appendAuthorsMetadata } from './notebookMetadata'
@@ -9,6 +9,37 @@ const notebook = (text: string) => exportMarkdown([{ dayId, humanTitle: 'Thursda
 const attributed = (text: string, names: (string | null)[]) => writeNotebookAuthors(notebook(text), new Map([[dayId, names]]))
 
 describe('OneDrive line attribution', () => {
+  it('reads legacy names without inventing dates, and records only the date of changed lines', async () => {
+    const base = await attributed('First\nSecond', ['Bob', 'Bob'])
+    expect((await readNotebookAttribution(base)).get(dayId)).toEqual([{ author: 'Bob', date: null }, { author: 'Bob', date: null }])
+    const changed = await annotateLocalNotebook(notebook('First\nChanged'), base, 'Alice', new Date(2026, 9, 2, 12).getTime())
+    expect((await readNotebookAttribution(changed)).get(dayId)).toEqual([{ author: 'Bob', date: null }, { author: 'Alice', date: '2026-10-02' }])
+    const unchanged = await annotateLocalNotebook(notebook('First\nChanged'), changed, 'Alice', new Date(2026, 9, 3, 12).getTime())
+    expect((await readNotebookAttribution(unchanged)).get(dayId)).toEqual((await readNotebookAttribution(changed)).get(dayId))
+  })
+  it('preserves both writers’ edit dates through concurrent additions and conflict resolution', async () => {
+    const base = await writeNotebookAttribution(notebook('First\nSecond'), new Map([[dayId, [
+      { author: 'Original', date: dayId }, { author: 'Original', date: dayId },
+    ]]]))
+    const local = await annotateLocalNotebook(notebook('Alice first\nSecond\nAlice added'), base, 'Alice', new Date(2026, 9, 2, 12).getTime())
+    const remote = await annotateLocalNotebook(notebook('Bob first\nBob second\nBob added'), base, 'Bob', new Date(2026, 9, 3, 12).getTime())
+    const merged = await mergeOneDriveNotebooksWithAuthors(base, local, remote)
+    expect((await readNotebookAttribution(merged)).get(dayId)).toEqual([
+      { author: 'Alice', date: '2026-10-02' }, { author: 'Bob', date: '2026-10-03' },
+      { author: 'Bob', date: '2026-10-03' }, { author: 'Alice', date: '2026-10-02' },
+    ])
+  })
+  it('discards malformed dates while retaining verified legacy authors and note text', async () => {
+    const { readAuthorsMetadata } = await import('./notebookMetadata')
+    const base = await attributed('First\nSecond', ['Bob', 'Bob'])
+    const metadata = readAuthorsMetadata(base) as { days: Record<string, { dates: unknown }> }
+    for (const dates of [[[2, '2026-02-30']], [[3, '2026-10-02']], [[1, '2026-10-02']], [[-1, null]]]) {
+      metadata.days[dayId].dates = dates
+      const damaged = appendAuthorsMetadata(base, metadata)
+      expect((await readNotebookAttribution(damaged)).get(dayId)).toEqual([{ author: 'Bob', date: null }, { author: 'Bob', date: null }])
+      expect(parseMarkdown(damaged).days[0].contentMd).toBe('First\nSecond')
+    }
+  })
   it('shares names in metadata without changing visible Markdown or leaking it into notes', async () => {
     const file = await attributed('Caffè ☕\nSecond', ['Caterina Bruchi', 'José'])
     expect(parseMarkdown(file).days[0].contentMd).toBe('Caffè ☕\nSecond')

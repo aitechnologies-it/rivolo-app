@@ -509,7 +509,8 @@ export default function Timeline() {
           padding: '0',
         },
         '.cm-gutters': {
-          display: 'none',
+          backgroundColor: 'transparent',
+          border: 'none',
         },
         '.cm-cursor, .cm-dropCursor': {
           borderLeft: '2px solid var(--theme-accent)',

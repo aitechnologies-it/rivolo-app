@@ -113,7 +113,7 @@ export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pu
         throw new Error(`OneDrive ${id}: this folder contains different notes without a shared baseline. Choose the cloud version or keep this device's days in OneDrive settings.`)
       }
     }
-    const localText = local ? await annotateLocalNotebook(encodeNotebookDay(local), stored.baseline ?? emptyBase(id, local.humanTitle), (await getOneDriveState()).accountName) : null
+    const localText = local ? await annotateLocalNotebook(encodeNotebookDay(local), stored.baseline ?? emptyBase(id, local.humanTitle), (await getOneDriveState()).accountName, local.updatedAt) : null
     let merged = remoteText ?? localText!
     if (force) merged = mode === 'pull' ? remoteText! : localText ?? remoteText!
     else if (localText && remoteText) merged = await mergeOneDriveNotebooksWithAuthors(stored.baseline ?? emptyBase(id), localText, remoteText)

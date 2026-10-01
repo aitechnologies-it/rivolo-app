@@ -1,53 +1,12 @@
-import { useEffect, useState } from 'react'
-import { getOneDriveState } from '../../lib/oneDriveState'
-import { getDailyState, targetFromState } from '../../lib/oneDriveDailyState'
-import { parseMarkdown } from '../../lib/markdown'
-import { alignLineAuthors, readNotebookAuthors, type LineAuthor } from '../../lib/oneDriveBlame'
-import { textLines } from '../../lib/sequenceDiff'
-import { useSyncStore } from '../../store/useSyncStore'
+import { formatDayTitle } from '../../lib/dates'
+import type { BlameGroup } from '../../lib/editor/blameGutter'
 
-export default function DayBlame({ dayId, content }: { dayId: string; content: string }) {
-  const lastSyncAt = useSyncStore((state) => state.status.lastSyncAt)
-  const [result, setResult] = useState<{ key: string; authors: LineAuthor[]; failed?: boolean } | null>(null)
-  const [limit, setLimit] = useState(200)
-  const key = `${dayId}:${lastSyncAt}:${content}`
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      const state = await getOneDriveState()
-      const target = targetFromState(state)
-      const dayState = target ? await getDailyState(target, dayId) : null
-      const baseline = dayState?.baseline ?? state.mergeBaseContent ?? ''
-      const baseDay = parseMarkdown(baseline).days.find((day) => day.dayId === dayId)
-      const authors = await readNotebookAuthors(baseline, dayId)
-      const aligned = alignLineAuthors(baseDay?.contentMd ?? '', content, authors.get(dayId) ?? [],
-        !dayState?.baseline && state.mergeBaseContent === null ? null : state.accountName)
-      if (!cancelled) setResult({ key, authors: aligned })
-    })().catch(() => { if (!cancelled) setResult({ key, authors: [], failed: true }) })
-    return () => { cancelled = true }
-  }, [content, dayId, key])
-
-  if (result?.key !== key) return <p role="status" className="py-3 text-xs text-slate-500">Loading authors…</p>
-  if (result.failed) return <p role="alert" className="py-3 text-xs text-slate-500">Could not load authors. Close and reopen to retry.</p>
-  const lines = textLines(content)
-  return (
-    <div className="mt-3 min-w-0" role="region" aria-label={`Line authors for ${dayId}`}>
-      <p className="mb-2 text-xs text-slate-500">Last editor · Read-only · Unsynced edits show your name. Older or external edits may have an unknown author.</p>
-      <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200">
-        {lines.slice(0, limit).map((line, index) => (
-          <div key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] border-b border-slate-100 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_10rem]">
-            <div className="min-w-0 whitespace-pre-wrap break-words px-2 py-1 text-sm [overflow-wrap:anywhere]">
-              <span className="mr-2 select-none text-xs text-slate-400" aria-label={`Line ${index + 1}`}>{index + 1}</span>
-              {line || '\u00a0'}
-            </div>
-            <div className="min-w-0 border-l border-slate-100 px-2 py-1 text-xs text-slate-500 [overflow-wrap:anywhere]">
-              {line.trim() ? result.authors[index] || 'Unknown author' : ''}
-            </div>
-          </div>
-        ))}
-      </div>
-      {lines.length > limit && <button type="button" className="mt-2 min-h-11 rounded-lg border border-slate-200 px-3 text-xs text-slate-600" onClick={() => setLimit((value) => value + 200)}>Show more lines</button>}
-      {!lines.length && <p className="py-2 text-xs text-slate-500">No lines yet.</p>}
+export function DayBlameDetails({ group, left, top, onClose }: { group: BlameGroup; left: number; top: number; onClose: () => void }) {
+  return <div role="dialog" aria-label="Line author details" className="absolute z-20 w-56 max-w-[calc(100%-16px)] rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-600 shadow-lg" style={{ left, top }}>
+    <div className="flex items-start justify-between gap-2">
+      <p className="min-w-0 break-words py-2 font-semibold">{group.author || 'Unknown author'}</p>
+      <button type="button" aria-label="Close author details" onClick={onClose} className="-mr-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-lg hover:bg-slate-50">×</button>
     </div>
-  )
+    {group.dates.map((date) => <time key={date} dateTime={date} className="block">{formatDayTitle(date)}</time>)}
+  </div>
 }
