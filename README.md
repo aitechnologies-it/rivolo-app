@@ -40,6 +40,8 @@ npm run preview
 
 ## Rivolo and AIT identities
 
+Rivolo’s core is a simple, local-first daily stream. This fork aims to support a growing team at AI Technologies while remaining comfortable for personal notes. Rivolo and AIT share the same core experience, with subtle branding differences. Identity controls presentation; collaboration comes from explicit features. Future changes should keep everyday writing easy as more coworkers participate.
+
 Settings → Appearance → App identity switches between Rivolo and Rivolo x AIT. The choice stays on the current device and web address; it does not change notes or sync settings. The company domain, `rivolo.aitlab.it`, defaults to AIT, while `rivolo.app` defaults to Rivolo.
 
 For the company deployment, set `VITE_APP_IDENTITY=ait` in the build environment so the initial HTML also contains the company title and installation icons. To preview that build locally:
