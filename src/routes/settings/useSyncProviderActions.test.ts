@@ -7,6 +7,7 @@ const syncActions = vi.hoisted(() => ({
   pullFromSyncAndRefresh: vi.fn(),
   pushToSyncAndRefresh: vi.fn(),
   blockedPushMessage: vi.fn((reason: string) => `blocked: ${reason}`),
+  recordSyncAttention: vi.fn(),
 }))
 
 vi.mock('../../store/syncActions', () => syncActions)
@@ -46,6 +47,7 @@ describe('useSyncProviderActions', () => {
     localStorage.removeItem('rivolo.sync.primary-tab')
     syncActions.pullFromSyncAndRefresh.mockReset()
     syncActions.pushToSyncAndRefresh.mockReset()
+    syncActions.recordSyncAttention.mockReset()
     syncActions.pullFromSyncAndRefresh.mockResolvedValue({ status: 'pulled' })
     vi.restoreAllMocks()
   })
@@ -62,6 +64,26 @@ describe('useSyncProviderActions', () => {
     expect(setStatus).toHaveBeenLastCalledWith(
       'You have unsynced local edits here. Use “Force pull (overwrite local)” to replace them with the Dropbox copy — a rollback backup is saved first.',
     )
+  })
+
+  it('lets OneDrive reconcile dirty days without requiring a whole-notebook overwrite', async () => {
+    const { result, rerender } = setupActions(true)
+    rerender({ provider: 'onedrive' })
+    await act(() => result.current.handlePull())
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledExactlyOnceWith({ force: false, allowUnsafeImport: false })
+    expect(result.current.pullRefused).toBe(false)
+  })
+
+  it('replaces stale OneDrive attention with the current recovery failure', async () => {
+    const { result, rerender, setStatus } = setupActions(true)
+    rerender({ provider: 'onedrive' })
+    syncActions.pushToSyncAndRefresh.mockRejectedValueOnce(new Error('Check SharePoint folder access'))
+    await act(() => result.current.handlePush(true))
+    expect(setStatus).toHaveBeenLastCalledWith('Check SharePoint folder access')
+    expect(syncActions.recordSyncAttention).toHaveBeenCalledWith('push', 'Check SharePoint folder access')
+    syncActions.pullFromSyncAndRefresh.mockRejectedValueOnce(new Error('Cannot verify sharing'))
+    await act(() => result.current.handleForcePull())
+    expect(syncActions.recordSyncAttention).toHaveBeenLastCalledWith('pull', 'Cannot verify sharing')
   })
 
   it('points a safety-blocked pull at Force pull instead of a browser confirm', async () => {

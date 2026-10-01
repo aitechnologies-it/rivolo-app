@@ -8,8 +8,9 @@ describe('sync notification lifecycle', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useSyncStore.setState({ activeProvider: 'onedrive',
+      status: { connected: true, localDirty: false, targetName: '/old-notes.md', lastRemoteVersion: null, lastSyncAt: null, accountName: null, accountEmail: null }, syncIssues: {},
       syncAttention: { operation: 'push', message: 'OneDrive changed remotely.', at: 1 } })
-    sync.getActiveProviderStatus.mockResolvedValue({ connected: true, localDirty: false })
+    sync.getActiveProviderStatus.mockResolvedValue({ connected: true, localDirty: false, targetName: '/old-notes.md' })
   })
   it('clears OneDrive attention when disconnecting the active provider', async () => {
     sync.getActiveProviderId.mockResolvedValue(null)
@@ -24,5 +25,19 @@ describe('sync notification lifecycle', () => {
     sync.getActiveProviderId.mockResolvedValue('onedrive')
     await useSyncStore.getState().loadState()
     expect(useSyncStore.getState().syncAttention?.message).toBe('OneDrive changed remotely.')
+  })
+  it('removes errors from the previous target after saving a folder, while preserving separate current issues', async () => {
+    const store = useSyncStore.getState()
+    store.setSyncIssue('onedrive:/old-notes.md:files', { operation: 'push', message: 'Owner must finish migration.', at: 1 })
+    store.setSyncIssue('onedrive:/old-notes.md:relay', { operation: 'pull', message: 'Relay unavailable.', at: 2 })
+    sync.getActiveProviderId.mockResolvedValue('onedrive')
+    sync.getActiveProviderStatus.mockResolvedValue({ connected: true, localDirty: false, targetName: '/Rivolo' })
+    await store.loadState()
+    expect(useSyncStore.getState().syncAttention).toBeNull()
+    expect(useSyncStore.getState().syncIssues).toEqual({})
+    store.setSyncIssue('onedrive:/Rivolo:files', { operation: 'push', message: 'Day malformed.', at: 3 })
+    store.setSyncIssue('onedrive:/Rivolo:relay', { operation: 'pull', message: 'Relay unavailable.', at: 4 })
+    store.setSyncIssue('onedrive:/Rivolo:relay', null)
+    expect(useSyncStore.getState().syncAttention?.message).toBe('Day malformed.')
   })
 })

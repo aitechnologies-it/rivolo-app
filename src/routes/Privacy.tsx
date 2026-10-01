@@ -53,9 +53,14 @@ export default function Privacy() {
             <span className="font-semibold text-slate-700">D) Optional cloud sync</span>
             <br />
             If you connect Dropbox, Google Drive, or OneDrive, the selected provider processes the notes data you choose to
-            sync. For both providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
+            sync. For these providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
             encrypted HttpOnly cookie; note contents are transferred directly between your browser and the selected
-            provider and do not pass through those functions.
+            provider and do not pass through those functions. For OneDrive live updates, a Cloudflare function uses
+            your access token to verify notebook folder access with Microsoft Graph, then issues a short-lived encrypted
+            WebSocket ticket. The relay distributes day/file identifiers and revisions, never note text or author names.
+            It stores the latest revision per file in a room identified by a hash of the folder identifier.
+            A migration registry also retains source/destination identifiers, migration status and coordination
+            leases so devices use the same daily notebook folder. It does not store note contents.
           </p>
         </div>
 
@@ -84,8 +89,8 @@ export default function Privacy() {
             <span className="font-semibold text-slate-700">Other technical browser storage</span>
             <br />
             IndexedDB stores the local notes database, chat history, settings, optional AI API keys, and sync
-            metadata. Session storage temporarily holds Dropbox and OneDrive OAuth validation data and the timeline scroll
-            position. Local storage holds the optional debug-logging preference and technical tab-coordination
+            metadata, per-day OneDrive baselines, migration recovery snapshots and pending event identifiers. Session storage temporarily holds Dropbox and OneDrive OAuth validation data and the timeline scroll
+            position. Older versions also queued OneDrive event identifiers in local storage. Local storage holds the optional debug-logging preference and technical tab-coordination
             entries (a random per-tab identifier and a data-revision counter, with no notes content or personal
             data) that let multiple open Rivolo tabs agree which one runs sync. The PWA service
             worker uses browser cache storage for app files needed for offline use. These mechanisms are used only to
@@ -107,7 +112,7 @@ export default function Privacy() {
 
         <h2 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">6) Recipients</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>Cloudflare (hosting/CDN/security and Google Drive/Dropbox/OneDrive OAuth credential exchange)</li>
+          <li>Cloudflare (hosting/CDN/security and Google Drive/Dropbox/OneDrive OAuth credential exchange, and OneDrive update events and migration coordination)</li>
           <li>Google (Gemini API), Anthropic, or OpenAI, only when selected for an AI request</li>
           <li>The operator of an OpenAI-compatible endpoint you choose, only when that endpoint is selected</li>
           <li>Dropbox (sync provider)</li>

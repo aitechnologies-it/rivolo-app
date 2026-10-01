@@ -44,7 +44,7 @@ const activeProviderLabel = () => {
   return providerId ? SYNC_PROVIDER_LABELS[providerId] : 'Sync provider'
 }
 
-export const recordSyncAttention = (operation: 'pull' | 'push', message: string) => {
+export const recordSyncAttention = (operation: 'pull' | 'push', message: string, category = 'files') => {
   const state = useSyncStore.getState()
   if (
     state.syncAttention?.operation === operation &&
@@ -52,12 +52,19 @@ export const recordSyncAttention = (operation: 'pull' | 'push', message: string)
   ) {
     return
   }
-  state.setSyncAttention({ operation, message, at: Date.now() })
+  if (state.activeProvider === 'onedrive') state.setSyncIssue(`${state.activeProvider}:${state.status.targetName}:${category}`, { operation, message, at: Date.now() })
+  else state.setSyncAttention({ operation, message, at: Date.now() })
+}
+
+export const clearSyncIssue = (category: string) => {
+  const state = useSyncStore.getState()
+  state.setSyncIssue?.(`${state.activeProvider}:${state.status.targetName}:${category}`, null)
 }
 
 const clearSyncAttention = () => {
   if (useSyncStore.getState().syncAttention) {
-    useSyncStore.getState().setSyncAttention(null)
+    if (useSyncStore.getState().activeProvider === 'onedrive') clearSyncIssue('files')
+    else useSyncStore.getState().setSyncAttention(null)
   }
 }
 
@@ -74,22 +81,31 @@ export const blockedPushMessage = (reason: 'remote_missing' | 'remote_changed') 
 export const pullFromSyncAndRefresh = async (options?: {
   force?: boolean
   allowUnsafeImport?: boolean
+  dayIds?: string[]
 }) =>
   enqueueSyncOperation('pull', async () => {
     requirePrimarySyncTab()
     const force = options?.force ?? false
     if (!force) {
       const status = await getActiveProviderStatus()
-      if (status.localDirty) {
+      if (status.localDirty && useSyncStore.getState().activeProvider !== 'onedrive') {
         await useSyncStore.getState().loadState()
         return { status: 'noop' as const }
       }
     }
 
-    const result = await pullFromSync({
+    let result
+    try { result = await pullFromSync({
       force,
       allowUnsafeImport: options?.allowUnsafeImport,
-    })
+      ...(options?.dayIds ? { dayIds: options.dayIds } : {}),
+    }) } catch (error) {
+      if (useSyncStore.getState().activeProvider === 'onedrive') {
+        await useDaysStore.getState().loadTimeline({ preserveWindow: true })
+        await useSyncStore.getState().loadState()
+      }
+      throw error
+    }
     if (result.status === 'pulled') {
       if (useSyncStore.getState().activeProvider === 'onedrive') {
         await useDaysStore.getState().loadTimeline({ preserveWindow: true })

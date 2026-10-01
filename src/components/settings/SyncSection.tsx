@@ -81,10 +81,10 @@ export default function SyncSection({
   const summary = summaries[provider]
   const label = SYNC_PROVIDER_LABELS[provider]
   const isActive = activeProvider === provider
-  const targetLabel = provider === 'onedrive' ? 'Shared file link or OneDrive path' : provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
+  const targetLabel = provider === 'onedrive' ? 'Shared folder link or OneDrive folder path' : provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
   const targetHint =
     provider === 'onedrive'
-      ? 'Rivolo automatically uses /rivolo-notes.md in your OneDrive when no link or path is entered. To use the same file across different accounts, share that file and paste its sharing link on the other devices. Each Microsoft account needs edit access. Remote changes appear automatically, usually within 5 seconds while Rivolo is open. New lines from both writers are combined. For conflicting edits to the same line, the last push wins. Merging always works line by line. Use Authors beside a day to see line editors. Display names are shared in the Markdown file.'
+      ? 'Rivolo uses /Rivolo by default, with one Markdown file per day inside year/month folders. An existing Markdown file link is also accepted: Rivolo creates a dedicated folder beside it and splits the notes by day, keeping the original file. Each Microsoft account needs edit access. Share the notebook folder and paste its folder link on each device. Updates from Rivolo appear while the app is open. External edits refresh when you return or pull. Concurrent additions are combined line by line. Authors are stored in each daily file. Offline use is complete after the notebook has finished loading.'
       : provider === 'dropbox'
       ? 'Rivolo reads and writes this Markdown path in Dropbox.'
       : 'Rivolo creates this visible Markdown file in the /rivolo folder in My Drive and tracks it by file ID.'
@@ -191,7 +191,7 @@ export default function SyncSection({
                   <div>Last sync: {summary.lastSync}</div>
                   {advanced && (
                     <>
-                      <div className="min-w-0 break-words">File: {summary.target || '—'}</div>
+                      <div className="min-w-0 break-words">{provider === 'onedrive' ? 'Folder' : 'File'}: {summary.target || '—'}</div>
                       <div className="min-w-0 break-all">Remote version: {summary.remoteVersion}</div>
                       <div>Local changes: {summary.dirty ? 'Not synced' : 'Synced'}</div>
                       <div>Network: {online ? 'Online' : 'Offline'}</div>
@@ -224,7 +224,7 @@ export default function SyncSection({
                       )}
                       {renderArmedButton(
                         'alert-keep-local',
-                        "Keep this device's notes — replaces the cloud copy",
+                        provider === 'onedrive' ? "Keep this device’s days — replaces matching cloud days" : "Keep this device's notes — replaces the cloud copy",
                         'Confirm — replace the cloud copy',
                         () => void onPush(true),
                       )}
@@ -279,7 +279,7 @@ export default function SyncSection({
                         <input
                           id="sync-target"
                           autoComplete="off"
-                          placeholder={provider === 'onedrive' ? '/rivolo-notes.md (automatic)' : undefined}
+                          placeholder={provider === 'onedrive' ? '/Rivolo (automatic)' : undefined}
                           className={inputClass}
                           value={targetDraft}
                           disabled={syncControlsDisabled}
@@ -323,7 +323,7 @@ export default function SyncSection({
                       {showForcePush &&
                         renderArmedButton(
                           'force-push',
-                          'Force push (overwrite remote)',
+                          provider === 'onedrive' ? 'Force push (overwrite matching days)' : 'Force push (overwrite remote)',
                           'Confirm force push',
                           () => void onPush(true),
                         )}

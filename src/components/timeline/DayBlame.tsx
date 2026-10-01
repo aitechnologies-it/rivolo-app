@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getOneDriveState } from '../../lib/oneDriveState'
+import { getDailyState, targetFromState } from '../../lib/oneDriveDailyState'
 import { parseMarkdown } from '../../lib/markdown'
 import { alignLineAuthors, readNotebookAuthors, type LineAuthor } from '../../lib/oneDriveBlame'
 import { textLines } from '../../lib/sequenceDiff'
@@ -14,11 +15,13 @@ export default function DayBlame({ dayId, content }: { dayId: string; content: s
     let cancelled = false
     void (async () => {
       const state = await getOneDriveState()
-      const baseline = state.mergeBaseContent ?? ''
+      const target = targetFromState(state)
+      const dayState = target ? await getDailyState(target, dayId) : null
+      const baseline = dayState?.baseline ?? state.mergeBaseContent ?? ''
       const baseDay = parseMarkdown(baseline).days.find((day) => day.dayId === dayId)
       const authors = await readNotebookAuthors(baseline, dayId)
       const aligned = alignLineAuthors(baseDay?.contentMd ?? '', content, authors.get(dayId) ?? [],
-        state.mergeBaseContent === null ? null : state.accountName)
+        !dayState?.baseline && state.mergeBaseContent === null ? null : state.accountName)
       if (!cancelled) setResult({ key, authors: aligned })
     })().catch(() => { if (!cancelled) setResult({ key, authors: [], failed: true }) })
     return () => { cancelled = true }

@@ -12,11 +12,16 @@ export type OneDriveState = {
   accountId: string | null
   accountEmail: string | null
   accountName: string | null
+  folderId: string | null
+  targetGeneration: number
+  migrationStatus: 'pending' | 'running' | 'blocked' | 'complete' | null
+  migrationMessage: string | null
+  migrationSource: string | null
 }
 
 const DEFAULT_STATE: OneDriveState = {
   connected: false,
-  filePath: '/rivolo-notes.md',
+  filePath: '/Rivolo',
   lastRemoteRev: null,
   lastPushedHash: null,
   mergeBaseContent: null,
@@ -26,9 +31,20 @@ const DEFAULT_STATE: OneDriveState = {
   accountId: null,
   accountEmail: null,
   accountName: null,
+  folderId: null,
+  targetGeneration: 0,
+  migrationStatus: null,
+  migrationMessage: null,
+  migrationSource: null,
 }
 
 let writeQueue: Promise<void> = Promise.resolve()
+
+export const runOneDriveStateExclusive = async <T>(operation: () => Promise<T>) => {
+  const queued = writeQueue.then(operation, operation)
+  writeQueue = queued.then(() => undefined, () => undefined)
+  return queued
+}
 
 const readOneDriveState = async () => {
   const stored = await getJsonSetting<OneDriveState>('onedrive.state')
@@ -42,6 +58,7 @@ const enqueueOneDriveStateWrite = async <T>(
     const current = await readOneDriveState()
     const { next, result } = mutator(current)
     await setJsonSetting('onedrive.state', next)
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
     return result
   }
 
@@ -60,7 +77,11 @@ export const getOneDriveState = async () => {
 
 export const updateOneDriveState = async (updates: Partial<OneDriveState>) => {
   return enqueueOneDriveStateWrite((current) => {
-    const next = { ...current, ...updates }
+    const accountChanged = updates.accountId !== undefined && updates.accountId !== current.accountId
+    const connectionChanged = updates.connected !== undefined && updates.connected !== current.connected
+    const next = { ...current, ...updates,
+      targetGeneration: updates.targetGeneration ?? current.targetGeneration + (accountChanged || connectionChanged ? 1 : 0),
+    }
     return { next, result: next }
   })
 }
@@ -71,6 +92,11 @@ export const updateOneDriveFilePath = async (filePath: string) => {
     const next = {
       ...current,
       filePath,
+      folderId: pathChanged ? null : current.folderId,
+      targetGeneration: pathChanged ? current.targetGeneration + 1 : current.targetGeneration,
+      migrationStatus: pathChanged ? 'pending' as const : current.migrationStatus,
+      migrationMessage: pathChanged ? null : current.migrationMessage,
+      migrationSource: pathChanged && current.migrationStatus === 'complete' ? null : current.migrationSource,
       localDirty: pathChanged ? true : current.localDirty,
       localRevision: pathChanged ? current.localRevision + 1 : current.localRevision,
       lastRemoteRev: pathChanged ? null : current.lastRemoteRev,
