@@ -12,9 +12,11 @@ import {
 import { buttonPill, buttonPillActive } from '../../lib/ui'
 import { themePreferenceLabels, type ThemePreference } from '../../lib/theme'
 import SettingsToggle from './SettingsToggle'
+import { appIdentities, type AppIdentity } from '../../lib/appIdentity'
 
 type AppearanceSectionProps = {
   themePreference: ThemePreference
+  appIdentity: AppIdentity
   wallpaper: 'none' | 'thoughts-light' | 'thoughts-high'
   highlightInputMode: boolean
   autocorrection: boolean
@@ -23,6 +25,7 @@ type AppearanceSectionProps = {
   bodyFontChoice: BodyFontChoice
   advanced?: boolean
   onThemePreferenceChange: (value: ThemePreference) => void
+  onAppIdentityChange: (value: AppIdentity) => void
   onWallpaperChange: (value: 'none' | 'thoughts-light' | 'thoughts-high') => void
   onHighlightInputModeChange: (enabled: boolean) => void
   onAutocorrectionChange: (enabled: boolean) => void
@@ -33,6 +36,7 @@ type AppearanceSectionProps = {
 
 export default function AppearanceSection({
   themePreference,
+  appIdentity,
   wallpaper,
   highlightInputMode,
   autocorrection,
@@ -41,6 +45,7 @@ export default function AppearanceSection({
   bodyFontChoice,
   advanced = false,
   onThemePreferenceChange,
+  onAppIdentityChange,
   onWallpaperChange,
   onHighlightInputModeChange,
   onAutocorrectionChange,
@@ -48,6 +53,7 @@ export default function AppearanceSection({
   onTitleFontChange,
   onBodyFontChoiceChange,
 }: AppearanceSectionProps) {
+  const identity = appIdentities[appIdentity]
   const renderFontPreviewContent = () => (
     <>
       <p className="text-xl" style={{ fontFamily: titleFontFamilies[titleFont] }}>
@@ -61,7 +67,7 @@ export default function AppearanceSection({
           fontSize: bodyFontChoice === 'lato' ? '0.98rem' : getMonospaceFontSize(bodyFontChoice),
         }}
       >
-        <p>@bob send message for breakfast at 8:30</p>
+        <p>{appIdentity === 'ait' ? '@marta review the release plan at 10:30' : '@bob send message for breakfast at 8:30'}</p>
         <p>Budget: 1,024 € + 15% ≈ 1,178 € --{'>'} due 31/12 (v1.0)</p>
       </div>
     </>
@@ -88,6 +94,32 @@ export default function AppearanceSection({
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
       <h2 className="text-lg font-bold text-slate-700">Appearance</h2>
+      <div className="mt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">App identity</h3>
+        <div className="mt-2 divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200">
+          <div className="flex flex-wrap gap-2 px-3 py-2.5">
+            {(['rivolo', 'ait'] as const).map((option) => (
+              <button
+                key={option}
+                className={`${appIdentity === option ? buttonPillActive : buttonPill} !min-h-11 px-4`}
+                type="button"
+                aria-pressed={appIdentity === option}
+                onClick={() => onAppIdentityChange(option)}
+              >
+                {appIdentities[option].label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 bg-slate-50 px-3 py-3" aria-live="polite">
+            <img src={identity.icon} alt={`${identity.name} app icon`} className="h-14 w-14 shrink-0 rounded-xl border border-slate-200" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-700">{identity.name}</p>
+              <p className="mt-1 text-xs text-slate-500">{identity.description}</p>
+            </div>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">Only changes the app’s appearance. Choose before adding to your home screen; an installed icon may keep its previous look.</p>
+      </div>
       <div className="mt-4">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Theme</h3>
         <div className="mt-2 flex flex-wrap gap-2 rounded-xl border border-slate-200 px-3 py-2.5">

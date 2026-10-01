@@ -38,6 +38,25 @@ npm run build
 npm run preview
 ```
 
+## Rivolo and AIT identities
+
+Rivolo’s core is a simple, local-first daily stream. This fork aims to support a growing team at AI Technologies while remaining comfortable for personal notes. Rivolo and AIT share the same core experience, with subtle branding differences. Identity controls presentation; collaboration comes from explicit features. Future changes should keep everyday writing easy as more coworkers participate.
+
+Settings → Appearance → App identity switches between Rivolo and Rivolo x AIT. The choice stays on the current device and web address; it does not change notes or sync settings. The company domain, `rivolo.aitlab.it`, defaults to AIT, while `rivolo.app` defaults to Rivolo.
+
+For the company deployment, set `VITE_APP_IDENTITY=ait` in the build environment so the initial HTML also contains the company title and installation icons. To preview that build locally:
+
+```bash
+VITE_APP_IDENTITY=ait npm run build
+npm run preview
+```
+
+Choose the identity before adding the app to the home screen. Browsers may keep an already installed icon or name until the app is added again. Each identity has its own manifest and icons, with a shared app ID on the same web address. The personal and company domains have separate browser storage.
+
+The company brain in `public/ait-brain.svg` comes from the supplied AI Technologies SVG, with the lettering removed. The white-and-blue stream icons in `public/icons/ait-*.png` were created with the builtin imagegen tool from Rivolo's existing icon using this prompt:
+
+> Edit target: the provided existing Rivolo app icon. Create its inverse colourway for the company's companion version. Change only colours: replace the blue square background with a pure white background, and recolour the existing white winding stream shape into Rivolo's cyan blue (#22b3ff, gently deepening to #169fe6). Preserve the EXACT stream silhouette, curves, location, proportions, thin upper-left swoosh and the softly fading trailing stream layers from the original. Full-bleed square app icon, sharp clean edges, no rounded frame baked into the image, no shadows around the square, no text, no letters, no AIT badge, no brain, no additional symbols. It must be recognizably the SAME Rivolo stream icon with white and blue exchanged. Output a square high-resolution PNG suitable for 512px, 192px and 180px exports.
+
 ## Cloud sync setup
 
 > Only needed if you run your own copy of Rivolo and want Google Drive or Dropbox sync. The hosted app at [rivolo.app](https://rivolo.app) already has this configured — nothing to do.
