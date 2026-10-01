@@ -61,17 +61,17 @@ const openSyncRow = async (id: string) => {
 describe('SyncSection', () => {
   it('opens OneDrive on a notification request and lets the user collapse and reopen it', async () => {
     const { rerender } = render(<SyncSection {...baseProps} provider="onedrive" openRequest={1} />)
-    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeVisible()
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
     await openSyncRow('onedrive')
-    expect(screen.queryByLabelText('Shared file link or OneDrive path')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Shared folder link or OneDrive folder path')).not.toBeInTheDocument()
     rerender(<SyncSection {...baseProps} provider="onedrive" openRequest={2} />)
-    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeVisible()
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
   })
 
   it('exposes a shared OneDrive target in Basic mode and disables sync while disconnected', async () => {
     render(<SyncSection {...baseProps} provider="onedrive" targetDraft="https://1drv.ms/u/shared" />)
     await openSyncRow('onedrive')
-    expect(screen.getByLabelText('Shared file link or OneDrive path')).toHaveValue('https://1drv.ms/u/shared')
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toHaveValue('https://1drv.ms/u/shared')
     expect(screen.getByRole('button', { name: 'Connect OneDrive' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Pull from OneDrive' })).toBeDisabled()
     expect(screen.getByText(/Each Microsoft account needs edit access/)).toBeVisible()
@@ -80,7 +80,7 @@ describe('SyncSection', () => {
   it('disables target editing during an active transfer', async () => {
     render(<SyncSection {...baseProps} provider="onedrive" syncBusy />)
     await openSyncRow('onedrive')
-    expect(screen.getByLabelText('Shared file link or OneDrive path')).toBeDisabled()
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeDisabled()
   })
 
   it('starts with all provider rows collapsed when no sync provider is active', () => {

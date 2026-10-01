@@ -2,6 +2,11 @@ name = "rivolo-app"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-06-21"
 
+[[durable_objects.bindings]]
+name = "ONEDRIVE_EVENTS"
+class_name = "OneDriveEvents"
+script_name = "rivolo-onedrive-events"
+
 # Public identifiers only. Secrets (client secrets, token encryption keys)
 # must NOT go here — set them as encrypted Secrets in the Cloudflare dashboard.
 [vars]
@@ -19,3 +24,8 @@ DROPBOX_CLIENT_ID = "u97wik4j3zxkssp"
 DROPBOX_ALLOWED_ORIGINS = "https://rivolo.app"
 ONEDRIVE_CLIENT_ID = "f84271d0-b942-4bd6-9a20-5ac66bfb1c2f"
 ONEDRIVE_ALLOWED_ORIGINS = "https://rivolo.app"
+
+[[env.production.durable_objects.bindings]]
+name = "ONEDRIVE_EVENTS"
+class_name = "OneDriveEvents"
+script_name = "rivolo-onedrive-events"

@@ -66,6 +66,7 @@ export const mergeOneDriveLines = (base: string, local: string, remote: string) 
 }
 
 const readNotebook = (content: string) => {
+  if (!content.trim()) return new Map<string, ParsedDay>()
   const parsed = parseMarkdown(content)
   if (!parsed.days.length || parsed.warnings.length) {
     throw new Error('OneDrive notebook cannot be merged: check its day markers before syncing.')

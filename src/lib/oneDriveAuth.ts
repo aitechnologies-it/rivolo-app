@@ -139,17 +139,20 @@ const completeAuth = async (code: string, returnedState: string | null) => {
   clearOAuthSession()
 
   const token = await exchangeAuthorizationCode(code, oauthSession.codeVerifier)
-  await updateOneDriveState({ connected: true, accountId: null, accountEmail: null, accountName: null,
-    lastRemoteRev: null, lastPushedHash: null, mergeBaseContent: null, lastSyncAt: null })
+  const previous = await getOneDriveState()
+  await updateOneDriveState({ connected: true })
   try {
     const account = await fetchOneDriveAccount(token.accessToken)
     await updateOneDriveState({
       accountId: account.id,
       accountEmail: account.mail ?? account.userPrincipalName,
       accountName: account.displayName,
+      ...(previous?.accountId !== account.id ? { folderId: null, migrationSource: null, migrationStatus: 'pending' as const,
+        migrationMessage: null, lastRemoteRev: null, lastPushedHash: null, mergeBaseContent: null, lastSyncAt: null } : {}),
     })
   } catch {
-    // Account metadata is optional; the OneDrive grant itself is enough to sync.
+    // Resolve account identity before using account-scoped daily baselines.
+    await updateOneDriveState({ accountId: null, folderId: null, migrationStatus: 'pending', migrationMessage: 'Reconnect OneDrive to verify the Microsoft account before syncing.' })
   }
 }
 

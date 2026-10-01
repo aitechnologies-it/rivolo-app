@@ -71,6 +71,11 @@ export default function Settings() {
   const dismissedSetupNotices = useSettingsStore((state) => state.dismissedSetupNotices)
   const oneDrive = useOneDriveStore()
   const loadOneDriveState = oneDrive.loadState
+  useEffect(() => {
+    const refresh = () => { void loadOneDriveState().catch(() => undefined) }
+    window.addEventListener('rivolo:onedrive-progress', refresh)
+    return () => window.removeEventListener('rivolo:onedrive-progress', refresh)
+  }, [loadOneDriveState])
   const [oneDriveTargetDraft, setOneDriveTargetDraft] = useState<string | null>(null)
   const oneDriveTarget = oneDriveTargetDraft ?? oneDrive.filePath
   const dropboxFilePath = useDropboxStore((state) => state.filePath)
@@ -122,7 +127,7 @@ export default function Settings() {
 
   const cloudHistory: CloudVersionHistory | null =
     activeProvider === 'onedrive' && oneDrive.hasAuth
-      ? { provider: 'onedrive', fileName: 'shared Markdown file', url: 'https://onedrive.live.com/' }
+      ? { provider: 'onedrive', fileName: 'shared notebook folder', url: 'https://onedrive.live.com/' }
       : activeProvider === 'dropbox' && dropboxHasAuth
       ? {
           provider: 'dropbox',
@@ -261,7 +266,7 @@ export default function Settings() {
     event.target.value = ''
   }
 
-  const exportFileName = activeSyncStatus.targetName?.startsWith('https://')
+  const exportFileName = activeProvider === 'onedrive' || activeSyncStatus.targetName?.startsWith('https://')
     ? 'rivolo-notes.md'
     : (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
 
@@ -430,7 +435,7 @@ export default function Settings() {
           targetDraft={selectedTarget}
           targetDirty={selectedTargetDirty}
           syncBusy={syncing}
-          status={syncStatus}
+          status={syncStatus ?? (selectedSyncProvider === 'onedrive' ? oneDrive.migrationMessage ?? oneDrive.offlineProgress : null)}
           advanced={showAdvanced}
           showForcePull={pullRefused || selectedAttention?.operation === 'pull'}
           showForcePush={pushBlocked || selectedAttention?.operation === 'push'}

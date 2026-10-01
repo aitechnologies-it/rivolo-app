@@ -1,268 +1,412 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+// @vitest-environment node
+import initSqlite from '@sqlite.org/sqlite-wasm'
+import { beforeAll, beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
+import { ensureDatabaseSchema, executeSql, openSerializedDatabase, queryRows, type RivoloDatabase, type RivoloSqlite, type SqlParam } from './sqliteRuntime'
+import type { Permission } from '../../functions/_lib/oneDrivePermissions'
+import { createGraphFixture } from '../test/oneDriveGraphFixture'
+import { encodeNotebookDay } from './notebookDays'
+import { writeNotebookAuthors, readNotebookAuthors } from './oneDriveBlame'
 
-const mocks = vi.hoisted(() => ({ settings: new Map<string, unknown>(), importMd: vi.fn(), exportMd: vi.fn() }))
-vi.mock('./settingsRepository', () => ({
-  getJsonSetting: async (key: string) => mocks.settings.get(key) ?? null,
-  setJsonSetting: async (key: string, value: unknown) => { mocks.settings.set(key, structuredClone(value)) },
+const dbMock = vi.hoisted(() => ({ db: null as RivoloDatabase | null }))
+vi.mock('./db', () => ({
+  run: async (sql: string, params: SqlParam[] = []) => executeSql(dbMock.db!, sql, params),
+  queryAll: async (sql: string, params: SqlParam[] = []) => queryRows(dbMock.db!, sql, params),
+  queryOne: async (sql: string, params: SqlParam[] = []) => queryRows(dbMock.db!, sql, params)[0] ?? null,
+  isFtsAvailable: async () => false, upsertFts: async () => {},
+  runAtomicDatabaseMutation: async (fn: (db: RivoloDatabase) => unknown) => { let result: unknown; dbMock.db!.transaction(() => { result = fn(dbMock.db!) }); return result },
+  flushDatabaseSave: async () => {}, runBulkDatabaseMutation: async (fn: () => Promise<unknown>) => fn(),
+  runDatabaseTransaction: async (fn: () => Promise<unknown>) => fn(),
 }))
-vi.mock('./importExport', () => ({ importMarkdownToDb: mocks.importMd, exportMarkdownFromDb: mocks.exportMd }))
-vi.mock('./oneDriveAuth', () => ({
-  authorizedOneDriveFetch: (url: string, init?: RequestInit) => fetch(url, init),
-  disconnectOneDriveAuth: vi.fn(),
+vi.mock('./oneDriveAuth', () => ({ authorizedOneDriveFetch: (url: string, init?: RequestInit) => fetch(url, init), disconnectOneDriveAuth: vi.fn() }))
+vi.mock('./oneDriveEvents', () => ({ flushDailyOneDriveEvents: vi.fn() }))
+vi.mock('./importExport', () => ({
+  saveRollbackBackup: vi.fn(),
+  exportMarkdownFromDb: async () => (await import('./markdown')).exportMarkdown(await (await import('./dayRepository')).listAllDays()),
 }))
-
-const item = (eTag = 'v1') => ({ id: 'shared-file', name: 'notes.md', eTag, file: {},
-  parentReference: { driveId: 'owner-drive' }, '@microsoft.graph.downloadUrl': 'https://download.example/notes' })
-const rev = '/drives/owner-drive/items/shared-file:v1'
-const json = (body: unknown, status = 200) => Response.json(body, { status })
-const initial = { connected: true, filePath: 'https://1drv.ms/u/s!shared', lastRemoteRev: rev,
-  localDirty: true, localRevision: 1, lastPushedHash: null, mergeBaseContent: null }
-const content = '<!-- day:2026-09-24 -->\nThursday\n---\n\nCaffè ☕'
-
-beforeEach(() => {
+let sqlite: RivoloSqlite
+let graph: ReturnType<typeof createGraphFixture>
+const id = '2026-10-01', previous = '2026-09-30'
+const doc = (contentMd: string, dayId = id) => encodeNotebookDay({ dayId, humanTitle: 'Thursday', contentMd })
+beforeAll(async () => { sqlite = await initSqlite() })
+beforeEach(async () => {
   vi.resetModules()
-  mocks.settings.clear()
-  mocks.settings.set('onedrive.state', { ...initial })
-  mocks.importMd.mockReset().mockResolvedValue({ imported: 1, warnings: [] })
-  mocks.exportMd.mockReset().mockResolvedValue(content)
+  dbMock.db = openSerializedDatabase(sqlite)
+  ensureDatabaseSchema(dbMock.db)
+  graph = createGraphFixture()
+  vi.stubGlobal('fetch', graph.fetch)
+  await (await import('./oneDriveState')).updateOneDriveState({ connected: true, accountId: 'alice', accountName: 'Alice', filePath: '/Rivolo', folderId: graph.folder, migrationStatus: 'complete' })
 })
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => { dbMock.db?.close(); vi.unstubAllGlobals() })
+const target = async () => (await import('./oneDriveDailyState')).targetFromState(await (await import('./oneDriveState')).getOneDriveState())!
+const baseline = async (content: string, dayId = id) => {
+  const item = graph.addDay(dayId, content)
+  const { saveDay } = await import('./dayRepository')
+  const { decodeNotebookDay } = await import('./notebookDays')
+  const day = decodeNotebookDay(content, dayId)
+  await saveDay(dayId, day.contentMd, day.humanTitle)
+  const daily = await import('./oneDriveDailyState')
+  await daily.writeDailyState(await target(), { dayId, item: `/drives/drive/items/${item.id}`, eTag: item.eTag, baseline: content,
+    uploadedHash: await (await import('./syncHash')).hashSyncContent(content), localRevision: (await daily.getDayChange(dayId)).revision, deleted: false })
+}
 
-describe('OneDrive shared file sync', () => {
-  it('resolves the sharing link, updates the owner drive, and uses UTF-8 byte ranges without forwarding auth', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item()))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item('v2'), 201))
-    vi.stubGlobal('fetch', fetchMock)
-    const { pushToOneDrive } = await import('./oneDrive')
-    expect(await pushToOneDrive()).toEqual({ status: 'pushed' })
-    expect(fetchMock.mock.calls[0][0]).toMatch(/\/shares\/u![A-Za-z0-9_-]+\/driveItem$/)
-    expect(fetchMock.mock.calls[0][1].headers.Prefer).toBe('redeemSharingLink')
-    expect(fetchMock.mock.calls[1][0]).toBe('https://graph.microsoft.com/v1.0/drives/owner-drive/items/shared-file/createUploadSession')
-    expect(fetchMock.mock.calls[1][1].headers['If-Match']).toBe('v1')
-    const upload = fetchMock.mock.calls[2][1]
-    const uploadedText = new TextDecoder().decode(upload.body)
-    expect(uploadedText).toContain(content)
-    const length = new TextEncoder().encode(uploadedText).length
-    expect(upload.headers['Content-Range']).toBe(`bytes 0-${length - 1}/${length}`)
-    expect(upload.headers.Authorization).toBeUndefined()
-    const { getOneDriveState } = await import('./oneDriveState')
-    expect(await getOneDriveState()).toMatchObject({ localDirty: false, lastRemoteRev: rev.replace('v1', 'v2') })
-  })
-
-  it('creates a missing own-drive file with conflictBehavior fail', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, filePath: '/rivolo-notes.md', lastRemoteRev: null })
-    const fetchMock = vi.fn().mockResolvedValueOnce(json({}, 404))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item(), 201))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'pushed' })
-    expect(fetchMock.mock.calls[1][0]).toContain('/me/drive/root:/rivolo-notes.md:/createUploadSession')
-    expect(JSON.parse(fetchMock.mock.calls[1][1].body).item['@microsoft.graph.conflictBehavior']).toBe('fail')
-  })
-
-  it.each([409, 412])('retains local edits on upload conflict %s', async (status) => {
-    const fetchMock = vi.fn().mockImplementation(async (_url, init) => init?.method === 'POST' ? json({}, status) : json(item()))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, lastRemoteRev: rev })
-  })
-
-  it('merges a newer remote notebook before uploading and refreshes local content', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
-    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice new`)
-    const remoteContent = `${content}\n\nBob new`
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item('v2')))
-      .mockResolvedValueOnce(new Response(remoteContent))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item('v3'), 200))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'pushed', localUpdated: true })
-    expect(fetchMock.mock.calls[2][1].headers['If-Match']).toBe('v2')
-    const uploaded = new TextDecoder().decode(fetchMock.mock.calls[3][1].body)
-    expect(uploaded).toContain('Bob new\n\nAlice new')
-    expect(mocks.importMd).toHaveBeenCalledWith(uploaded, expect.objectContaining({ allowDeletedDays: true }))
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false, mergeBaseContent: uploaded })
-  })
-
-  it('keeps old clients safe when a changed remote notebook has no merge base yet', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(item('v2'))))
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
-  })
-
-  it('re-downloads and merges again when another writer changes the file before upload', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
-    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice`)
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json(item('v2')))
-      .mockResolvedValueOnce(new Response(`${content}\n\nBob`))
-      .mockResolvedValueOnce(json({}, 412))
-      .mockResolvedValueOnce(json(item('v3')))
-      .mockResolvedValueOnce(new Response(`${content}\n\nBob\n\nCarol`))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item('v4')))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toMatchObject({ status: 'pushed', localUpdated: true })
-    expect(new TextDecoder().decode(fetchMock.mock.calls[6][1].body)).toContain('Bob\n\nCarol\n\nAlice')
-  })
-
-  it('preserves typing during a merged upload and includes it in the next merge without duplicating additions', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, mergeBaseContent: content })
-    mocks.exportMd.mockResolvedValue(`${content}\n\nAlice`)
-    let merged = ''
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(json(item('v2')))
-      .mockResolvedValueOnce(new Response(`${content}\n\nBob`))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockImplementationOnce(async (_url, init) => {
-        merged = new TextDecoder().decode(init.body)
-        await (await import('./oneDriveState')).markOneDriveLocalDirty()
-        mocks.exportMd.mockResolvedValue(`${content}\n\nAlice\n\nAlice later`)
-        return json(item('v3'))
-      })
-    vi.stubGlobal('fetch', fetchMock)
-    const { pushToOneDrive } = await import('./oneDrive')
-    expect(await pushToOneDrive()).toMatchObject({ status: 'pushed', attention: expect.any(String) })
-    expect(mocks.importMd).not.toHaveBeenCalled()
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, mergeBaseContent: expect.stringContaining(`${content}\n\nAlice`) })
-    fetchMock.mockResolvedValueOnce(json(item('v3')))
-      .mockResolvedValueOnce(new Response(merged))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item('v4')))
-    expect(await pushToOneDrive()).toMatchObject({ status: 'pushed', localUpdated: true })
-    const next = new TextDecoder().decode(fetchMock.mock.calls[7][1].body)
-    expect(next).toContain('Bob\n\nAlice\n\nAlice later')
-    expect(next.match(/Bob/g)).toHaveLength(1)
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false, mergeBaseContent: next })
-  })
-
-  it('never overwrites an existing untracked shared file on a normal push', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, lastRemoteRev: null })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json(item())))
-    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'blocked', reason: 'remote_changed' })
-  })
-
-  it('allows an explicit force push to replace the remote notebook', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item('v2')))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockResolvedValueOnce(json(item('v3'), 200))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pushToOneDrive(true)).toEqual({ status: 'pushed' })
-    expect(fetchMock.mock.calls[1][1].headers['If-Match']).toBe('v2')
-  })
-
-  it('preserves edits made while uploading as dirty', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item()))
-      .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))
-      .mockImplementationOnce(async () => {
-        await (await import('./oneDriveState')).markOneDriveLocalDirty()
-        return json(item('v2'))
-      })
-    vi.stubGlobal('fetch', fetchMock)
+describe('OneDrive daily notebook sync', () => {
+  it('verifies SharePoint conditional content writes, removes its probe and merges a race without losing additions', async () => {
+    graph.setDriveType('documentLibrary')
+    await baseline(doc('First'))
+    await (await import('./dayRepository')).saveDay(id, 'First\nLocal', 'Thursday')
+    graph.afterBytes(async () => { graph.addDay(id, doc('First\nRemote'), 'v2') })
     await (await import('./oneDrive')).pushToOneDrive()
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, localRevision: 2 })
+    expect(graph.texts.get(`file-${id}`)).toContain('First\nRemote\nLocal')
+    expect([...graph.items.values()].some((item) => item.name.startsWith('.rivolo-condition-'))).toBe(false)
+    expect(graph.fetch.mock.calls.some(([url]) => String(url).endsWith('/createUploadSession'))).toBe(false)
+    const updates = graph.fetch.mock.calls.filter(([url, init]) => String(url).endsWith(`/file-${id}/content`) && init?.method === 'PUT')
+    expect(updates.map(([, init]) => new Headers(init!.headers).get('If-Match'))).toEqual(['v1', 'v2'])
   })
-
-  it('does not replace dirty notes on ordinary pull', async () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'noop' })
-    expect(fetchMock).not.toHaveBeenCalled()
+  it('does not upload user notes when a business drive ignores conditional requests', async () => {
+    graph.setDriveType('business'); graph.ignoreConditions()
+    await (await import('./dayRepository')).saveDay(id, 'Private local note', 'Thursday')
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('did not verify conditional file writes')
+    expect(graph.counters.commits).toEqual([])
+    expect([...graph.texts.values()].some((text) => text.includes('Private local note'))).toBe(false)
+    expect([...graph.items.values()].some((item) => item.name.startsWith('.rivolo-condition-'))).toBe(false)
   })
-
-  it('pulls a shared file via its preauthorized download URL and marks other providers stale', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item('v2'))).mockResolvedValueOnce(new Response(content))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'pulled' })
-    expect(fetchMock.mock.calls[1]).toEqual(['https://download.example/notes', { cache: 'no-store' }])
-    expect(mocks.importMd).toHaveBeenCalledWith(content, expect.objectContaining({ replace: true, markDirty: false, allowUnsafeImport: undefined, allowDeletedDays: true, beforeReplace: expect.any(Function) }))
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: false })
-    expect(mocks.settings.get('dropbox.state')).toMatchObject({ localDirty: true })
-    expect(mocks.settings.get('google-drive.state')).toMatchObject({ localDirty: true })
+  it('requires a choice for unknown differing cloud days, then preserves the selected device copy', async () => {
+    graph.addDay(id, doc('Existing cloud note'))
+    await (await import('./dayRepository')).saveDay(id, 'Independent local note', 'Thursday')
+    const sync = await import('./oneDrive')
+    await expect(sync.pushToOneDrive()).rejects.toThrow('without a shared baseline')
+    expect(graph.counters.commits).toEqual([])
+    expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('Independent local note')
+    await sync.pushToOneDrive(true)
+    expect(graph.texts.get(`file-${id}`)).toContain('Independent local note')
+    expect(graph.texts.get(`file-${id}`)).not.toContain('Existing cloud note')
   })
-
-  it('does not download an unchanged remote notebook', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false, mergeBaseContent: content })
-    const fetchMock = vi.fn().mockResolvedValueOnce(json(item()))
-    vi.stubGlobal('fetch', fetchMock)
-    expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'noop' })
-    expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(mocks.importMd).not.toHaveBeenCalled()
+  it('uses an empty baseline for verified simultaneous creation after observing the missing day', async () => {
+    await (await import('./dayRepository')).saveDay(id, 'Created locally', 'Thursday')
+    graph.afterBytes(async () => { graph.addDay(id, doc('Created remotely')) })
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.get(`file-${id}`)).toContain('Created remotely\nCreated locally')
   })
-
-  it('waits for pending editor drafts before downloading', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    const unregister = (await import('./pendingEditorSaves')).registerPendingEditorSaves(() => ['2026-09-24'])
+  it('uploads only the edited day and commits conditionally after UTF-8 bytes without forwarding auth', async () => {
+    await baseline(doc('Yesterday', previous), previous)
+    await baseline(doc('Before'))
+    await (await import('./dayRepository')).saveDay(id, 'Caffè ☕')
+    const result = await (await import('./oneDrive')).pushToOneDrive()
+    expect(result.status).toBe('pushed')
+    expect(graph.counters.commits).toEqual([id])
+    expect(graph.counters.downloads).toEqual([])
+    const session = graph.fetch.mock.calls.find(([url]) => String(url).endsWith('/createUploadSession'))!
+    expect(JSON.parse(session[1]!.body as string).deferCommit).toBe(true)
+    const commit = graph.fetch.mock.calls.find(([url, init]) => String(url).startsWith('https://graph') && init?.method === 'PUT')!
+    expect(new Headers(commit[1]!.headers).get('If-Match')).toBe('v1')
+    const bytes = graph.fetch.mock.calls.find(([url, init]) => String(url).startsWith('https://upload') && init?.method === 'PUT')![1]!
+    expect(new Headers(bytes.headers).has('Authorization')).toBe(false)
+    expect(new TextDecoder().decode(bytes.body as Uint8Array)).toContain('Caffè ☕')
+    expect(await (await import('./oneDrive')).getOneDriveStatus()).toMatchObject({ localDirty: false, notebookChannel: graph.folder })
+    expect((await (await import('./oneDriveDailyState')).readDailyOutbox(await target()))[0].entry.event).toMatchObject({ type: 'day-changed', dayId: id })
+  })
+  it('combines concurrent additions with their authors and leaves other days intact', async () => {
+    const base = await writeNotebookAuthors(doc('First'), new Map([[id, ['Bob']]]))
+    await baseline(base)
+    await baseline(doc('History', previous), previous)
+    await (await import('./dayRepository')).saveDay(id, 'First\nAlice addition')
+    graph.addDay(id, await writeNotebookAuthors(doc('First\nBob addition'), new Map([[id, ['Bob', 'Bob']]])), 'v2')
+    expect(await (await import('./oneDrive')).pushToOneDrive()).toMatchObject({ status: 'pushed', localUpdated: true })
+    const text = graph.texts.get(`file-${id}`)!
+    expect(text).toContain('First\nBob addition\nAlice addition')
+    expect((await readNotebookAuthors(text)).get(id)).toEqual(['Bob', 'Bob', 'Alice'])
+    expect((await (await import('./dayRepository')).getDay(previous))?.contentMd).toBe('History')
+  })
+  it('rereads and remerges when another writer wins between upload-session creation and final commit', async () => {
+    await baseline(doc('First'))
+    await (await import('./dayRepository')).saveDay(id, 'First\nAlice')
+    graph.afterBytes(async () => { graph.addDay(id, doc('First\nBob'), 'v2') })
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.get(`file-${id}`)).toContain('First\nBob\nAlice')
+    expect(graph.counters.commits).toEqual([id])
+    expect(graph.counters.downloads).toContain(`file-${id}`)
+  })
+  it('preserves typing and dirty revisions advanced during upload, then reconciles without duplicate remote additions', async () => {
+    await baseline(doc('First'))
+    await (await import('./dayRepository')).saveDay(id, 'First\nAlice')
+    graph.addDay(id, doc('First\nBob'), 'v2')
+    graph.afterBytes(async () => { await (await import('./dayRepository')).saveDay(id, 'First\nAlice\nLater') })
+    const sync = await import('./oneDrive')
+    expect(await sync.pushToOneDrive()).toMatchObject({ status: 'pushed', attention: expect.any(String) })
+    expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('First\nAlice\nLater')
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(true)
+    await sync.pushToOneDrive()
+    expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('First\nBob\nAlice\nLater')
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(false)
+  })
+  it('checkpoints successful days when one upload fails, then retries only the failed day', async () => {
+    const days = await import('./dayRepository')
+    await days.saveDay(previous, 'Yesterday')
+    await days.saveDay(id, 'Today')
+    graph.setFailure(previous)
+    const sync = await import('./oneDrive')
+    expect(await sync.pushToOneDrive()).toMatchObject({ status: 'pushed', attention: expect.any(String) })
+    expect(graph.counters.commits).toEqual([id])
+    graph.setFailure(null)
+    await sync.pushToOneDrive()
+    expect(graph.counters.commits).toEqual([id, previous])
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(false)
+  })
+  it('pulls the event day only, skips unchanged downloads, and preserves the rest of the notebook', async () => {
+    await baseline(doc('Old'))
+    await baseline(doc('History', previous), previous)
+    graph.addDay(id, doc('Remote edit'), 'v2')
+    const sync = await import('./oneDrive')
+    expect(await sync.pullFromOneDrive({ dayIds: [id] })).toEqual({ status: 'pulled' })
+    expect(graph.counters.downloads).toEqual([`file-${id}`])
+    expect((await (await import('./dayRepository')).getDay(previous))?.contentMd).toBe('History')
+    expect(await sync.pullFromOneDrive({ dayIds: [id] })).toEqual({ status: 'noop' })
+    expect(graph.counters.downloads).toHaveLength(1)
+    const { getJsonSetting } = await import('./settingsRepository')
+    expect(await getJsonSetting('dropbox.state')).toMatchObject({ localDirty: true })
+    expect(await getJsonSetting('google-drive.state')).toMatchObject({ localDirty: true })
+  })
+  it('defers a draft without blocking another day and marks offline availability incomplete', async () => {
+    await baseline(doc('Before'))
+    graph.addDay(id, doc('Remote'), 'v2')
+    graph.addDay(previous, doc('Yesterday', previous))
+    const unregister = (await import('./pendingEditorSaves')).registerPendingEditorSaves(() => [id])
     try {
-      expect(await (await import('./oneDrive')).pullFromOneDrive()).toEqual({ status: 'noop' })
-      expect(fetchMock).not.toHaveBeenCalled()
+      await (await import('./oneDrive')).pullFromOneDrive()
+      expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('Before')
+      expect((await (await import('./dayRepository')).getDay(previous))?.contentMd).toBe('Yesterday')
+      expect((await (await import('./oneDrive')).getOneDriveStatus()).offlineReady).toBe(false)
     } finally { unregister() }
   })
-
-  it('detects typing during download before the debounced save reaches the database', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockImplementationOnce(async () => {
-      (await import('./pendingEditorSaves')).noteEditorChange()
-      return new Response(content)
-    }))
-    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('Notes changed during download')
-    expect(mocks.importMd).not.toHaveBeenCalled()
+  it('does not create a remote file for simply viewing a blank day', async () => {
+    await (await import('./dayRepository')).ensureDay(id)
+    expect(await (await import('./oneDrive')).pushToOneDrive()).toEqual({ status: 'clean' })
+    expect(graph.counters.commits).toEqual([])
   })
-
-  it('rechecks edits after backup creation and before replacing notes', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockResolvedValueOnce(new Response(content)))
-    mocks.importMd.mockImplementationOnce(async (_content, options) => {
-      (await import('./pendingEditorSaves')).noteEditorChange()
-      await options.beforeReplace()
-    })
-    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('Notes changed during download')
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ lastRemoteRev: rev })
+  it('propagates an explicit deletion and queues a folder invalidation', async () => {
+    await baseline(doc('Delete me'))
+    await (await import('./dayRepository')).deleteDay(id)
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.has(`file-${id}`)).toBe(false)
+    expect((await (await import('./oneDriveDailyState')).readDailyOutbox(await target()))[0].entry.event.type).toBe('inventory-invalidated')
   })
-
-  it('honors Retry-After before issuing another metadata request', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '120' } }))
-    vi.stubGlobal('fetch', fetchMock)
-    const { pushToOneDrive } = await import('./oneDrive')
-    await expect(pushToOneDrive()).rejects.toThrow('OneDrive is busy')
-    await expect(pushToOneDrive()).rejects.toThrow('OneDrive is busy')
-    expect(fetchMock).toHaveBeenCalledTimes(1)
+  it('confirms a missing remote file by ID before deleting a clean local day, but keeps a new local edit', async () => {
+    await baseline(doc('Gone'))
+    graph.items.delete(`/drives/drive/items/file-${id}`)
+    await (await import('./oneDrive')).pullFromOneDrive()
+    expect(await (await import('./dayRepository')).getDay(id)).toBeNull()
+    await (await import('./dayRepository')).saveDay(id, 'A new edit')
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.get(`file-${id}`)).toContain('A new edit')
   })
-
-  it('aborts a pull if the user edits while the download is running', async () => {
-    mocks.settings.set('onedrive.state', { ...initial, localDirty: false })
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockImplementationOnce(async () => {
-      await (await import('./oneDriveState')).markOneDriveLocalDirty()
-      return new Response(content)
-    }))
-    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('Notes changed during download')
-    expect(mocks.importMd).not.toHaveBeenCalled()
+  it('does not treat moved or malformed files as deletions', async () => {
+    await baseline(doc('Keep'))
+    graph.items.get(`/drives/drive/items/file-${id}`)!.name = 'renamed.md'
+    await expect((await import('./oneDrive')).pullFromOneDrive()).rejects.toThrow('moved or renamed')
+    expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('Keep')
   })
-
-  it('preserves sync state when import safety rejects the remote file', async () => {
-    mocks.importMd.mockRejectedValue(new Error('Unsafe import'))
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json(item('v2'))).mockResolvedValueOnce(new Response('invalid')))
-    await expect((await import('./oneDrive')).pullFromOneDrive({ force: true })).rejects.toThrow('Unsafe import')
-    expect(mocks.settings.get('onedrive.state')).toEqual(initial)
+  it('stops before commit if the account or target changes while bytes upload', async () => {
+    await baseline(doc('Before'))
+    await (await import('./dayRepository')).saveDay(id, 'Local edit')
+    graph.afterBytes(async () => { await (await import('./oneDriveState')).updateOneDriveFilePath('/Other') })
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('account or notebook changed')
+    expect(graph.counters.commits).toEqual([])
   })
+})
 
-  it.each([403, 404])('keeps local notes when a shared link becomes inaccessible (%s)', async (status) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({}, status)))
-    await expect((await import('./oneDrive')).pushToOneDrive(true)).rejects.toThrow('OneDrive')
-    expect(mocks.settings.get('onedrive.state')).toEqual(initial)
-    expect(mocks.importMd).not.toHaveBeenCalled()
-  })
-
-  it('rejects folders and invalid targets', async () => {
-    const { validateOneDriveTarget, pushToOneDrive } = await import('./oneDrive')
-    for (const target of ['/notes.txt', '/../notes.md', '/a//b.md', 'http://1drv.ms/file', '/a?.md']) {
-      expect(() => validateOneDriveTarget(target)).toThrow()
+const setupMigration = async (sourceText: string, base: string | null = sourceText) => {
+  const source = { id: 'legacy', name: 'notes.md', eTag: 'old-v1', file: {}, parentReference: { driveId: 'drive', id: 'root' }, '@microsoft.graph.downloadUrl': 'https://download.test/legacy' }
+  graph.items.set('/drives/drive/items/legacy', source)
+  graph.texts.set('legacy', sourceText)
+  graph.items.get(graph.folder)!.name = 'Rivolo-notes-legacy'
+  let registration: { destination?: string; status?: string; generation?: number; lease?: string; expires?: number } = {}
+  let denyPermissions = false
+  let registryUnavailable = false
+  let ownDrive = 'drive'
+  let sourcePermissions: Permission[] = [{ roles: ['owner'], grantedToV2: { user: { id: 'alice' } } }]
+  let destinationPermissions: Permission[] = sourcePermissions
+  const grants: object[] = []
+  const requests: object[] = []
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input)
+    if (url === '/api/onedrive/migration') {
+      const body = JSON.parse(init!.body as string)
+      requests.push(body)
+      if (registryUnavailable) return Response.json({ message: 'Registry unavailable' }, { status: 503 })
+      if (body.action === 'claim') registration = { destination: body.destination, status: 'running', generation: 1, lease: 'lease-1', expires: Date.now() + 60_000 }
+      if (body.action === 'renew') registration.expires = Date.now() + 60_000
+      if (body.action === 'complete') registration.status = 'complete'
+      return Response.json(registration)
     }
-    expect(validateOneDriveTarget('')).toBe('/rivolo-notes.md')
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ ...item(), file: undefined })))
-    await expect(pushToOneDrive()).rejects.toThrow('not a folder')
+    if (url.endsWith('/permissions')) return Response.json({ value: url.includes('/legacy/') ? sourcePermissions : denyPermissions ?
+      [{ roles: ['write'], link: { scope: 'anonymous', type: 'edit' } }] : destinationPermissions })
+    if (url.endsWith('/createLink')) {
+      const body = JSON.parse(init!.body as string); grants.push(body)
+      const link = { roles: [body.type === 'edit' ? 'write' : 'read'], link: { scope: body.scope, type: body.type, webUrl: 'https://share.test/daily-folder' } }
+      destinationPermissions = [...destinationPermissions, link]
+      return Response.json(link)
+    }
+    if (url.endsWith('/invite')) {
+      const body = JSON.parse(init!.body as string); grants.push(body)
+      destinationPermissions = [...destinationPermissions, { roles: body.roles, grantedToV2: { user: { id: body.recipients[0].objectId } } }]
+      return Response.json({ value: destinationPermissions })
+    }
+    if (url.endsWith('/me/drive?$select=id')) return Response.json({ id: ownDrive })
+    return graph.fetch(input, init)
+  }))
+  await (await import('./oneDriveState')).updateOneDriveState({ filePath: '/notes.md', folderId: null, migrationStatus: 'pending', mergeBaseContent: base })
+  return { requests, source, grants,
+    setSharePoint: () => {
+      ownDrive = 'personal-drive'; graph.setDriveType('documentLibrary')
+      destinationPermissions = [
+        { roles: ['owner'], grantedToV2: { siteGroup: { id: '3' }, sharePointGroup: { id: 'site-owners' } } },
+        { roles: ['read'], grantedToV2: { siteGroup: { id: '4' }, sharePointGroup: { id: 'site-visitors' } } },
+        { roles: ['write'], grantedToV2: { siteGroup: { id: '5' }, sharePointGroup: { id: 'site-members' } } },
+      ]
+      sourcePermissions = [...destinationPermissions, { roles: ['write'], link: { scope: 'organization', type: 'edit' }, grantedToIdentitiesV2: [{ user: { id: 'alice' } }, { user: { id: 'bob' } }] }]
+    }, setDrive: (drive: string) => { ownDrive = drive }, setUnshared: () => { sourcePermissions = []; destinationPermissions = [] },
+    setMissingRecipient: () => { sourcePermissions = [...sourcePermissions, { roles: ['write'], grantedToV2: { user: { id: 'existing-reader' } } }] },
+    setCompleted: () => { registration = { destination: graph.folder, status: 'complete' } },
+    denyPermissions: () => { denyPermissions = true }, registryUnavailable: () => { registryUnavailable = true }, registryAvailable: () => { registryUnavailable = false } }
+}
+
+describe('automatic legacy migration', () => {
+  it('creates a folder and daily files for the HAR SharePoint permission shape, preserving the original file and existing organization access', async () => {
+    await (await import('./dayRepository')).saveDay(id, 'First', 'Thursday')
+    const service = await setupMigration(doc('First'))
+    graph.items.delete(graph.folder)
+    service.setSharePoint()
+    await (await import('./oneDrive')).pushToOneDrive()
+    const state = await (await import('./oneDriveState')).getOneDriveState()
+    expect(state.migrationStatus).toBe('complete')
+    expect(state.filePath).toBe('https://share.test/daily-folder')
+    expect(graph.items.get(state.folderId!)?.name).toBe('Rivolo-notes-legacy')
+    expect(graph.texts.get('legacy')).toBe(doc('First'))
+    expect(graph.texts.get(`file-${id}`)).toContain('First')
+    expect(service.grants).toEqual([{ type: 'edit', scope: 'organization', retainInheritedPermissions: true }])
+    expect(service.requests.map((request) => (request as { action: string }).action)).toEqual(['lookup', 'claim', 'complete'])
+  })
+  it('retains the original merge baseline when a folder is saved during a blocked migration', async () => {
+    const days = await import('./dayRepository')
+    await days.saveDay(id, 'First\nLocal addition', 'Thursday')
+    const service = await setupMigration(doc('First'))
+    service.registryUnavailable()
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('Registry unavailable')
+    await (await import('./oneDriveState')).updateOneDriveFilePath(graph.folder)
+    service.registryAvailable()
+    graph.texts.set('legacy', doc('First\nRemote addition'))
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.get(`file-${id}`)).toContain('First\nRemote addition\nLocal addition')
+    expect((await days.getDay(id))?.contentMd).toBe('First\nRemote addition\nLocal addition')
+  })
+  it('creates the dedicated folder automatically from the old file and splits it by day without a manually entered folder', async () => {
+    const source = doc('Today') + '\n\n' + doc('Previous', previous)
+    const service = await setupMigration(source)
+    service.setUnshared()
+    graph.items.delete(graph.folder)
+    await (await import('./oneDrive')).pullFromOneDrive()
+    const state = await (await import('./oneDriveState')).getOneDriveState()
+    expect(state.folderId).not.toBe(graph.folder)
+    const destination = graph.items.get(state.folderId!)!
+    expect(destination.name).toBe('Rivolo-notes-legacy')
+    expect(destination.parentReference?.id).toBe('root')
+    expect(state.filePath).toBe(state.folderId)
+    expect(graph.texts.get('legacy')).toBe(source)
+    expect(graph.counters.commits.sort()).toEqual([previous, id].sort())
+    const inventory = await (await import('./oneDriveGraph')).inventoryDays(state.folderId!)
+    expect([...inventory.keys()].sort()).toEqual([previous, id].sort())
+  })
+  it('recognizes a verified SharePoint owner and uses the saved dedicated folder', async () => {
+    const service = await setupMigration(doc('Today'))
+    service.setDrive('personal-drive')
+    const states = await import('./oneDriveState')
+    await states.updateOneDriveState({ migrationSource: '/drives/drive/items/legacy', migrationStatus: 'blocked' })
+    await states.updateOneDriveFilePath(graph.folder)
+    graph.items.get(graph.folder)!.name = 'My chosen Rivolo folder'
+    await (await import('./oneDrive')).pullFromOneDrive()
+    expect((await states.getOneDriveState()).folderId).toBe(graph.folder)
+    expect(graph.fetch.mock.calls.some(([, init]) => init?.method === 'POST' && String(init.body).includes('Rivolo-notes-legacy'))).toBe(false)
+  })
+  it('copies only missing existing recipients without notifications, then verifies matching access before copying notes', async () => {
+    const service = await setupMigration(doc('Today'))
+    service.setMissingRecipient()
+    await (await import('./oneDrive')).pullFromOneDrive()
+    expect(service.grants).toEqual([{ recipients: [{ objectId: 'existing-reader' }], roles: ['write'], requireSignIn: true, sendInvitation: false, retainInheritedPermissions: true }])
+    expect(graph.counters.commits).toEqual([id])
+  })
+  it('migrates before syncing, preserves the original file and authors, and replaces the target with the verified folder', async () => {
+    const source = await writeNotebookAuthors(doc('First'), new Map([[id, ['Bob']]]))
+    await (await import('./dayRepository')).saveDay(id, 'First\nLocal addition', 'Thursday')
+    const service = await setupMigration(source)
+    const sync = await import('./oneDrive')
+    await sync.pushToOneDrive()
+    const state = await (await import('./oneDriveState')).getOneDriveState()
+    expect(state).toMatchObject({ folderId: graph.folder, filePath: graph.folder, migrationStatus: 'complete', mergeBaseContent: null })
+    expect(graph.texts.get('legacy')).toBe(source)
+    expect(graph.texts.get(`file-${id}`)).toContain('First\nLocal addition')
+    expect((await readNotebookAuthors(graph.texts.get(`file-${id}`)!)).get(id)).toEqual(['Bob', 'Alice'])
+    expect(service.requests.map((request) => (request as { action: string }).action)).toEqual(['lookup', 'claim', 'complete'])
+  })
+  it('stays on the legacy target without uploads when the registry is unavailable or permissions would broaden access', async () => {
+    await (await import('./dayRepository')).saveDay(id, 'First', 'Thursday')
+    const service = await setupMigration(doc('First'))
+    service.registryUnavailable()
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('Registry unavailable')
+    expect(graph.counters.commits).toEqual([])
+    expect(await (await import('./oneDriveState')).getOneDriveState()).toMatchObject({ filePath: '/notes.md', migrationStatus: 'blocked' })
+  })
+  it('blocks unknown or wider sharing without sending an invitation or copying note text', async () => {
+    await (await import('./dayRepository')).saveDay(id, 'First', 'Thursday')
+    const service = await setupMigration(doc('First'))
+    service.denyPermissions()
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('same recipients')
+    expect(graph.counters.commits).toEqual([])
+    expect(service.requests).toHaveLength(1)
+  })
+  it('preserves both ambiguous copies and waits for an explicit choice instead of overwriting either', async () => {
+    await (await import('./dayRepository')).saveDay(id, 'My separate notes', 'Thursday')
+    await setupMigration(doc('Remote notes'), null)
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('without a shared baseline')
+    expect(graph.counters.commits).toEqual([])
+    expect((await (await import('./dayRepository')).getDay(id))?.contentMd).toBe('My separate notes')
+    expect(graph.texts.get('legacy')).toContain('Remote notes')
+    await (await import('./oneDrive')).pushToOneDrive(true)
+    expect(graph.texts.get(`file-${id}`)).toContain('My separate notes')
+  })
+  it('resumes copied days after failure without re-uploading successful checkpoints', async () => {
+    const source = doc('First') + '\n\n' + doc('Yesterday', previous)
+    const days = await import('./dayRepository')
+    await days.saveDay(id, 'First', 'Thursday'); await days.saveDay(previous, 'Yesterday', 'Thursday')
+    await setupMigration(source)
+    graph.setFailure(previous)
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('500')
+    expect(graph.counters.commits).toEqual([id])
+    expect((await (await import('./oneDriveState')).getOneDriveState()).migrationStatus).toBe('blocked')
+    graph.setFailure(null)
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.counters.commits).toEqual([id, previous])
+    expect((await (await import('./oneDriveState')).getOneDriveState()).migrationStatus).toBe('complete')
+  })
+  it('does not resurrect unchanged legacy days deleted after another device completed migration', async () => {
+    const source = doc('First') + '\n\n' + doc('Yesterday', previous)
+    const days = await import('./dayRepository')
+    await days.saveDay(id, 'First', 'Thursday'); await days.saveDay(previous, 'Yesterday', 'Thursday')
+    const service = await setupMigration(source)
+    service.setCompleted()
+    graph.addDay(id, doc('First\nA later remote edit'), 'v2')
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect((await days.getDay(id))?.contentMd).toBe('First\nA later remote edit')
+    expect(await days.getDay(previous)).toBeNull()
+    expect(graph.counters.commits).toEqual([])
+  })
+  it('preserves local changes made during a copy and completes with them on retry', async () => {
+    const days = await import('./dayRepository')
+    await days.saveDay(id, 'First', 'Thursday')
+    await setupMigration(doc('First'))
+    graph.afterBytes(async () => { await days.saveDay(id, 'First\nTyped during migration', 'Thursday') })
+    await expect((await import('./oneDrive')).pushToOneDrive()).rejects.toThrow('Notes changed during migration')
+    expect((await days.getDay(id))?.contentMd).toBe('First\nTyped during migration')
+    await (await import('./oneDrive')).pushToOneDrive()
+    expect(graph.texts.get(`file-${id}`)).toContain('Typed during migration')
   })
 })

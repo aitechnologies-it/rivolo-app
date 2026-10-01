@@ -14,15 +14,19 @@ export type SyncStatus = {
   localDirty: boolean
   accountName: string | null
   accountEmail: string | null
+  notebookChannel?: string | null
+  offlineReady?: boolean
 }
 
 export type SyncPullResult = {
   status: 'noop' | 'pulled'
+  deferredDayIds?: string[]
 }
 
 export type SyncPullOptions = {
   force?: boolean
   allowUnsafeImport?: boolean
+  dayIds?: string[]
 }
 
 export type SyncPushResult =
