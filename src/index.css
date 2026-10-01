@@ -973,13 +973,13 @@
 }
 
 @layer utilities {
-  @media (hover: hover) and (pointer: fine) {
+  @media (min-width: 640px) and (hover: hover) and (pointer: fine) {
     .touch-actions {
       display: none;
     }
   }
 
-  @media (hover: none) {
+  @media (max-width: 639px), (hover: none), (pointer: coarse) {
     .touch-hide {
       display: none;
     }

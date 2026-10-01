@@ -100,9 +100,9 @@ const folderSharingLink = async (folder: string) => {
   } catch { return null }
 }
 const equalNotes = (a: string, b: string) => notebookText(a).trimEnd() === notebookText(b).trimEnd()
-const prepareSnapshot = async (state: OneDriveState, source: string, local: string, choice?: 'local' | 'cloud') => {
+const prepareSnapshot = async (state: OneDriveState, source: string, local: string, choice: 'local' | 'cloud' | undefined, editedAt: Map<string, number>) => {
   if (choice === 'cloud') return source
-  const annotated = await annotateLocalNotebook(local, state.mergeBaseContent, state.accountName)
+  const annotated = await annotateLocalNotebook(local, state.mergeBaseContent, state.accountName, editedAt)
   if (choice === 'local') return annotated
   if (!local.trim()) return source
   if (state.mergeBaseContent) return mergeOneDriveNotebooksWithAuthors(state.mergeBaseContent, annotated, source)
@@ -125,9 +125,10 @@ export const migrateOneDriveFile = async (state: OneDriveState, sourceItem: Driv
   const key = journalKey(state.accountId, source)
   let journal = await getJsonSetting<Journal>(key)
   let registration = await registryRequest(source, 'lookup') // Never create a divergent folder if the registry is unavailable.
+  const editedAt = new Map((await listAllDays()).map((day) => [day.dayId, day.updatedAt]))
   const localText = await exportMarkdownFromDb()
   const remoteText = await downloadItem(sourceItem)
-  const snapshot = await prepareSnapshot(snapshotState, remoteText, localText, choice)
+  const snapshot = await prepareSnapshot(snapshotState, remoteText, localText, choice, editedAt)
   if (!journal) {
     await saveRollbackBackup(localText)
     await saveRollbackBackup(remoteText)
@@ -201,7 +202,7 @@ export const migrateOneDriveFile = async (state: OneDriveState, sourceItem: Driv
       }
       else if (!ours) next = remote
       else if (remote) next = await mergeOneDriveNotebooksWithAuthors(base ?? encodeNotebookDay({ dayId: id, humanTitle: '', contentMd: '' }),
-        await annotateLocalNotebook(ours, base ?? null, state.accountName), remote)
+        await annotateLocalNotebook(ours, base ?? null, state.accountName, editedAt), remote)
       else next = base && equalNotes(ours, base) ? null : ours
     }
     if (!next) {

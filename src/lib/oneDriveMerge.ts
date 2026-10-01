@@ -1,6 +1,6 @@
 import { exportMarkdown, parseMarkdown, type ParsedDay } from './markdown'
 import { matchingLines, textLines } from './sequenceDiff'
-import { alignLineAuthors, readNotebookAuthors, writeNotebookAuthors, type NotebookAuthors } from './oneDriveBlame'
+import { alignLineAttribution, readNotebookAttribution, writeNotebookAttribution, type NotebookAttribution } from './oneDriveBlame'
 
 const changes = (base: string[], next: string[]) => {
   const anchors = [...matchingLines(base, next), [base.length, next.length]]
@@ -105,17 +105,17 @@ export const mergeOneDriveNotebooks = (base: string, local: string, remote: stri
 
 export const mergeOneDriveNotebooksWithAuthors = async (base: string, local: string, remote: string) => {
   const [baseAuthors, localAuthors, remoteAuthors] = await Promise.all([
-    readNotebookAuthors(base), readNotebookAuthors(local), readNotebookAuthors(remote),
+    readNotebookAttribution(base), readNotebookAttribution(local), readNotebookAttribution(remote),
   ])
-  const authors: NotebookAuthors = new Map([...remoteAuthors, ...localAuthors])
+  const authors: NotebookAttribution = new Map([...remoteAuthors, ...localAuthors])
   const content = mergeNotebook(base, local, remote, (id, before, ours, theirs) => {
-    if (!remoteAuthors.has(id)) remoteAuthors.set(id, alignLineAuthors(before, theirs, baseAuthors.get(id) ?? [], null))
+    if (!remoteAuthors.has(id)) remoteAuthors.set(id, alignLineAttribution(before, theirs, baseAuthors.get(id) ?? [], { author: null, date: null }))
     if (ours === theirs || theirs === before) { authors.set(id, localAuthors.get(id) ?? []); return ours }
     if (ours === before) { authors.set(id, remoteAuthors.get(id) ?? []); return theirs }
     const units = mergeUnits(textLines(before), textLines(ours), textLines(theirs))
     const sources = { base: baseAuthors.get(id), local: localAuthors.get(id), remote: remoteAuthors.get(id) }
-    authors.set(id, units.map((unit) => sources[unit.side]?.[unit.index] ?? null))
+    authors.set(id, units.map((unit) => sources[unit.side]?.[unit.index] ?? { author: null, date: null }))
     return units.map((unit) => unit.text).join('\n')
   })
-  return writeNotebookAuthors(content, authors)
+  return writeNotebookAttribution(content, authors)
 }

@@ -53,7 +53,8 @@ export default function Privacy() {
             <span className="font-semibold text-slate-700">D) Optional cloud sync</span>
             <br />
             If you connect Dropbox, Google Drive, or OneDrive, the selected provider processes the notes data you choose to
-            sync. For these providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
+            sync. OneDrive daily files also contain line editor names and recorded edit dates, visible to people who
+            can read the notebook folder. For these providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
             encrypted HttpOnly cookie; note contents are transferred directly between your browser and the selected
             provider and do not pass through those functions. For OneDrive live updates, a Cloudflare function uses
             your access token to verify notebook folder access with Microsoft Graph, then issues a short-lived encrypted

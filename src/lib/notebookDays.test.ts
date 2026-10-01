@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { dayPath, decodeNotebookDay, encodeNotebookDay, splitNotebookDays } from './notebookDays'
-import { readNotebookAuthors, writeNotebookAuthors } from './oneDriveBlame'
+import { readNotebookAuthors, writeNotebookAuthors, readNotebookAttribution, writeNotebookAttribution } from './oneDriveBlame'
 
 const day = (dayId: string, contentMd = 'Caffè ☕\n\n<!-- day:2025-01-01 -->\n<!-- rivolo:authors:v1 AAA= -->') => ({ dayId, humanTitle: 'A title', contentMd })
 describe('daily notebook codec', () => {
+  it('preserves edit dates when splitting a notebook into daily files', async () => {
+    const source = await writeNotebookAttribution(encodeNotebookDay(day('2026-01-01', 'Old note')), new Map([
+      ['2026-01-01', [{ author: 'Alice', date: '2026-10-02' }]],
+    ]))
+    const files = await splitNotebookDays(source)
+    expect((await readNotebookAttribution(files.get('2026-01-01')!)).get('2026-01-01')).toEqual([{ author: 'Alice', date: '2026-10-02' }])
+  })
   it.each(['2024-02-29', '2026-01-01', '2027-01-01', '2026-12-31'])('round-trips Unicode and literal structural markers for %s', (id) => {
     expect(decodeNotebookDay(encodeNotebookDay(day(id)), id)).toEqual(day(id))
     expect(dayPath(id)).toBe(`${id.slice(0, 4)}/${id.slice(5, 7)}/${id}.md`)

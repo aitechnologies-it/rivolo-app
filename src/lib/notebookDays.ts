@@ -1,6 +1,6 @@
 import { exportMarkdown, parseMarkdown, type ParsedDay } from './markdown'
 import { isValidDayId } from './dates'
-import { readNotebookAuthors, writeNotebookAuthors } from './oneDriveBlame'
+import { readNotebookAttribution, writeNotebookAttribution } from './oneDriveBlame'
 
 export const dayPath = (dayId: string) => {
   if (!isValidDayId(dayId)) throw new Error(`Invalid day ID: ${dayId}`)
@@ -24,10 +24,10 @@ export const decodeNotebookDay = (source: string, dayId: string) => {
 export const splitNotebookDays = async (source: string) => {
   const parsed = parseMarkdown(source)
   if (parsed.warnings.length || !parsed.days.length) throw new Error('OneDrive migration needs a notebook with valid, unique day markers.')
-  const authors = await readNotebookAuthors(source)
+  const authors = await readNotebookAttribution(source)
   const result = new Map<string, string>()
   for (const day of parsed.days) {
-    result.set(day.dayId, await writeNotebookAuthors(encodeNotebookDay(day), new Map([[day.dayId, authors.get(day.dayId) ?? []]])))
+    result.set(day.dayId, await writeNotebookAttribution(encodeNotebookDay(day), new Map([[day.dayId, authors.get(day.dayId) ?? []]])))
   }
   return result
 }
