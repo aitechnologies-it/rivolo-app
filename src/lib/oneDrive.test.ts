@@ -41,7 +41,9 @@ describe('OneDrive shared file sync', () => {
     expect(fetchMock.mock.calls[1][0]).toBe('https://graph.microsoft.com/v1.0/drives/owner-drive/items/shared-file/createUploadSession')
     expect(fetchMock.mock.calls[1][1].headers['If-Match']).toBe('v1')
     const upload = fetchMock.mock.calls[2][1]
-    const length = new TextEncoder().encode(content).length
+    const uploadedText = new TextDecoder().decode(upload.body)
+    expect(uploadedText).toContain(content)
+    const length = new TextEncoder().encode(uploadedText).length
     expect(upload.headers['Content-Range']).toBe(`bytes 0-${length - 1}/${length}`)
     expect(upload.headers.Authorization).toBeUndefined()
     const { getOneDriveState } = await import('./oneDriveState')
@@ -122,7 +124,7 @@ describe('OneDrive shared file sync', () => {
     const { pushToOneDrive } = await import('./oneDrive')
     expect(await pushToOneDrive()).toMatchObject({ status: 'pushed', attention: expect.any(String) })
     expect(mocks.importMd).not.toHaveBeenCalled()
-    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, mergeBaseContent: `${content}\n\nAlice` })
+    expect(mocks.settings.get('onedrive.state')).toMatchObject({ localDirty: true, mergeBaseContent: expect.stringContaining(`${content}\n\nAlice`) })
     fetchMock.mockResolvedValueOnce(json(item('v3')))
       .mockResolvedValueOnce(new Response(merged))
       .mockResolvedValueOnce(json({ uploadUrl: 'https://upload.example/session' }))

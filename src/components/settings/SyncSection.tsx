@@ -84,7 +84,7 @@ export default function SyncSection({
   const targetLabel = provider === 'onedrive' ? 'Shared file link or OneDrive path' : provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
   const targetHint =
     provider === 'onedrive'
-      ? 'Rivolo automatically uses /rivolo-notes.md in your OneDrive when no link or path is entered. To use the same file across different accounts, share that file and paste its sharing link on the other devices. Each Microsoft account needs edit access. Remote changes appear automatically, usually within 5 seconds while Rivolo is open. New paragraphs from both writers are combined. For conflicting edits to an existing paragraph, the last push wins. Separate new paragraphs with a blank line.'
+      ? 'Rivolo automatically uses /rivolo-notes.md in your OneDrive when no link or path is entered. To use the same file across different accounts, share that file and paste its sharing link on the other devices. Each Microsoft account needs edit access. Remote changes appear automatically, usually within 5 seconds while Rivolo is open. New lines from both writers are combined. For conflicting edits to the same line, the last push wins. Merging always works line by line. Use Authors beside a day to see line editors. Display names are shared in the Markdown file.'
       : provider === 'dropbox'
       ? 'Rivolo reads and writes this Markdown path in Dropbox.'
       : 'Rivolo creates this visible Markdown file in the /rivolo folder in My Drive and tracks it by file ID.'
