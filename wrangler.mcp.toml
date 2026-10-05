@@ -3,6 +3,9 @@ main = "mcp/worker.ts"
 compatibility_date = "2026-06-21"
 routes = [{ pattern = "mcp.rivolo.app", custom_domain = true }]
 
+[triggers]
+crons = ["0 3 * * *"]
+
 [[d1_databases]]
 binding = "MCP_DB"
 database_name = "rivolo-mcp"
@@ -21,6 +24,9 @@ MCP_RESOURCE_URL = "https://mcp.rivolo.app/mcp"
 name = "rivolo-mcp-dev"
 workers_dev = false
 routes = [{ pattern = "mcp-dev.rivolo.app", custom_domain = true }]
+
+[env.dev.triggers]
+crons = ["0 3 * * *"]
 
 [env.dev.vars]
 GOOGLE_CLIENT_ID = "535138004412-dme8a9sitbamhg00jiln5eang5b7nf8s.apps.googleusercontent.com"
