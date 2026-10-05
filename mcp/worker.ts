@@ -35,9 +35,13 @@ export default {
     ctx: ExecutionContext,
   ): Promise<void> {
     ctx.waitUntil(
-      runMcpD1Cleanup(env.MCP_DB).then((stats) => {
-        console.log('[mcp-d1-cleanup]', JSON.stringify(stats))
-      }),
+      runMcpD1Cleanup(env.MCP_DB)
+        .then((stats) => {
+          console.log('[mcp-d1-cleanup]', JSON.stringify(stats))
+        })
+        .catch((error) => {
+          console.error('[mcp-d1-cleanup] failed', error)
+        }),
     )
   },
 }

@@ -145,7 +145,7 @@ const createFixtures = (db: SqliteD1) => {
       client_id, registration_hash, redirect_uris, client_name, created_at
     ) VALUES (
       'client-1', '0000000000000000000000000000000000000000000000000000000000000001',
-      '[\"https://client.example.com/cb\"]', 'Test Client', '2026-01-01T00:00:00.000Z'
+      '["https://client.example.com/cb"]', 'Test Client', '2026-01-01T00:00:00.000Z'
     );
   `)
 }
@@ -443,4 +443,47 @@ describe('runMcpD1Cleanup', () => {
     expect(ctx.waitUntil).toHaveBeenCalledTimes(1)
     await Promise.all(waitUntilPromises)
   })
-})
+it("logs errors when runMcpD1Cleanup rejects in Worker scheduled handler", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {})
+
+    const rejectingDb = {
+      prepare: vi.fn(() => {
+        throw new Error("D1 connection failed")
+      }),
+    } as unknown as D1Database
+
+    const waitUntilPromises: Promise<unknown>[] = []
+    const ctx = {
+      waitUntil: vi.fn((promise: Promise<unknown>) => {
+        waitUntilPromises.push(promise)
+      }),
+      passThroughOnException: vi.fn(),
+    } as unknown as ExecutionContext
+
+    const env = {
+      MCP_DB: rejectingDb,
+      MCP_PROVIDER_TOKEN_ENCRYPTION_KEY: "test-key",
+      DROPBOX_CLIENT_ID: "test-client",
+      GOOGLE_CLIENT_ID: "test-google-id",
+      GOOGLE_CLIENT_SECRET: "test-google-secret",
+    } as RemoteMcpEnv
+
+    const controller = {
+      scheduledTime: Date.now(),
+      cron: "0 3 * * *",
+      noRetry: vi.fn(),
+    } as unknown as ScheduledController
+
+    await worker.scheduled!(controller, env, ctx)
+
+    expect(ctx.waitUntil).toHaveBeenCalledTimes(1)
+    await Promise.all(waitUntilPromises)
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[mcp-d1-cleanup] failed",
+      expect.any(Error),
+    )
+
+    errorSpy.mockRestore()
+  })
+});
