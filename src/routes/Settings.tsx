@@ -20,6 +20,12 @@ import { buildAttentionItems } from '../lib/attention'
 import { DEFAULT_GOOGLE_DRIVE_FILE_NAME, getGoogleDrivePath } from '../lib/googleDriveState'
 import { claimPrimaryTabForSync } from '../lib/tabSyncCoordinator'
 import { useTabSyncState } from '../hooks/useTabSyncState'
+import {
+  agentAccessDisableWarning,
+  runConfirmedAgentAccessDisable,
+  runWithAgentAccessSafety,
+  useAgentAccess,
+} from './settings/useAgentAccess'
 import { useDatabasePersistFailure } from '../hooks/useDatabasePersistFailure'
 import { useSyncProviderActions } from './settings/useSyncProviderActions'
 import { useDaysStore } from '../store/useDaysStore'
@@ -88,6 +94,7 @@ export default function Settings() {
   const loadDropboxState = useDropboxStore((state) => state.loadState)
   const updateFilePath = useDropboxStore((state) => state.updateFilePath)
   const googleDriveConnected = useGoogleDriveStore((state) => state.connected)
+  const googleDriveFileId = useGoogleDriveStore((state) => state.fileId)
   const googleDriveFolderId = useGoogleDriveStore((state) => state.folderId)
   const googleDriveFileName = useGoogleDriveStore((state) => state.fileName)
   const googleDriveRemoteVersion = useGoogleDriveStore((state) => state.lastRemoteVersion)
@@ -113,6 +120,7 @@ export default function Settings() {
   const [dropboxPathDraft, setDropboxPathDraft] = useState<string | null>(null)
   const [googleDriveFileNameDraft, setGoogleDriveFileNameDraft] = useState<string | null>(null)
   const [initialLoadDone, setInitialLoadDone] = useState(false)
+  const agentAccess = useAgentAccess(online)
 
   const { provider: selectedSyncProvider, selectProvider: setSyncProviderDraft, openPanel: openSyncPanel, openRequest: syncOpenRequest } = useSyncPanelNavigation(activeProvider, initialLoadDone)
   const settingsView = useSettingsStore((state) => state.settingsView)
@@ -177,7 +185,7 @@ export default function Settings() {
   const bodyFontChoice = getBodyFontChoice(fontPreference, monospaceFont)
   const dropboxAccount = useMemo(() => {
     if (dropboxAccountName && dropboxAccountEmail) {
-      return `${dropboxAccountName} (${dropboxAccountEmail})`
+      return `${dropboxAccountName} · ${dropboxAccountEmail}`
     }
     return dropboxAccountEmail ?? dropboxAccountName ?? '—'
   }, [dropboxAccountEmail, dropboxAccountName])
@@ -203,7 +211,7 @@ export default function Settings() {
 
   const googleDriveAccount = useMemo(() => {
     if (googleDriveAccountName && googleDriveAccountEmail) {
-      return `${googleDriveAccountName} (${googleDriveAccountEmail})`
+      return `${googleDriveAccountName} · ${googleDriveAccountEmail}`
     }
     return googleDriveAccountEmail ?? googleDriveAccountName ?? '—'
   }, [googleDriveAccountEmail, googleDriveAccountName])
@@ -239,9 +247,42 @@ export default function Settings() {
   const selectedTarget = selectedSyncProvider === 'onedrive' ? oneDriveTarget : selectedSyncProvider === 'dropbox' ? dropboxPath : googleFileName
   const selectedTargetDirty =
     selectedSyncProvider === 'onedrive' ? oneDriveTarget.trim() !== oneDrive.filePath : selectedSyncProvider === 'dropbox' ? isDropboxPathDirty : isGoogleFileNameDirty
+  const agentAccessBoundToSelectedProvider =
+    agentAccess.view.state === 'enabled' &&
+    agentAccess.view.profile.provider === selectedSyncProvider
 
   const loadProviderStates = async () => {
     await Promise.all([loadOneDriveState(), loadDropboxState(), loadGoogleDriveState()])
+  }
+
+  const runWithAgentSafety = async (
+    actionLabel: string,
+    action: () => Promise<void>,
+    requiresDisable = agentAccess.enabled,
+  ) => {
+    const result = await runWithAgentAccessSafety({
+      statusKnown: agentAccess.statusKnown,
+      enabled: requiresDisable,
+      confirmDisable: () =>
+        window.confirm(
+          agentAccessDisableWarning(`This will ${actionLabel} and disable Agent access`),
+        ),
+      disable: agentAccess.disable,
+      action,
+    })
+    if (result === 'cancelled') {
+      setSyncStatus('No changes were made.')
+      return false
+    }
+    if (result === 'status-unknown') {
+      setSyncStatus(`Check Agent access before you ${actionLabel}.`)
+      return false
+    }
+    if (result === 'disable-failed') {
+      setSyncStatus(`Agent access must be disabled before you ${actionLabel}.`)
+      return false
+    }
+    return true
   }
 
   const handleImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -292,7 +333,18 @@ export default function Settings() {
         return
       }
     } else if (selectedSyncProvider === 'dropbox') {
-      await updateFilePath(dropboxPath.trim() || DEFAULT_DROPBOX_PATH)
+      const nextPath = dropboxPath.trim() || DEFAULT_DROPBOX_PATH
+      if (
+        !(await runWithAgentSafety(
+          'change the sync target',
+          async () => {
+            await updateFilePath(nextPath)
+          },
+          agentAccessBoundToSelectedProvider && selectedTargetDirty,
+        ))
+      ) {
+        return
+      }
       setDropboxPathDraft(null)
     } else {
       const nextFileName = googleFileName.trim() || DEFAULT_GOOGLE_DRIVE_FILE_NAME
@@ -300,7 +352,17 @@ export default function Settings() {
         setSyncStatus('Google Drive file name must be a Markdown file name without folders.')
         return
       }
-      await updateGoogleDriveFileName(nextFileName)
+      if (
+        !(await runWithAgentSafety(
+          'change the sync target',
+          async () => {
+            await updateGoogleDriveFileName(nextFileName)
+          },
+          agentAccessBoundToSelectedProvider && selectedTargetDirty,
+        ))
+      ) {
+        return
+      }
       setGoogleDriveFileNameDraft(null)
     }
     await loadProviderStates()
@@ -327,6 +389,38 @@ export default function Settings() {
       loadSyncState,
       setActiveProvider: setActiveSyncProvider,
     })
+
+  const handleDisconnectWithAgentSafety = async () => {
+    if (selectedSyncProvider === 'onedrive' || (activeProvider !== selectedSyncProvider && !agentAccessBoundToSelectedProvider)) {
+      await handleDisconnect()
+      return
+    }
+    await runWithAgentSafety(`disconnect ${selectedSyncProvider}`, handleDisconnect)
+  }
+
+  const handleActivateWithAgentSafety = async () => {
+    await runWithAgentSafety(
+      'switch sync providers',
+      handleActivate,
+      agentAccess.enabled && activeProvider !== selectedSyncProvider,
+    )
+  }
+
+  const handleEnableAgentAccess = async () => {
+    if (selectedSyncProvider === 'dropbox') {
+      await agentAccess.enable({ provider: 'dropbox', path: savedDropboxPath })
+      return
+    }
+    if (selectedSyncProvider !== 'google-drive' || !googleDriveFileId) return
+    await agentAccess.enable({ provider: 'google-drive', fileId: googleDriveFileId })
+  }
+
+  const handleDisableAgentAccess = async () => {
+    await runConfirmedAgentAccessDisable({
+      confirmDisable: window.confirm,
+      disable: agentAccess.disable,
+    })
+  }
 
   // Sync attention belongs to the active provider; only surface it (and the
   // force action it calls for) while that provider's panel is the one shown.
@@ -360,40 +454,42 @@ export default function Settings() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between px-3 pt-1">
-        <h1 className="text-2xl font-bold tracking-normal text-slate-700">Settings</h1>
-        <SegmentedControl
-          options={[
-            { value: 'basic', label: 'Basic' },
-            { value: 'advanced', label: 'Advanced' },
-          ]}
-          value={settingsView}
-          onChange={(next) => {
-            void updateSettingsView(next)
-          }}
-        />
-      </header>
-
-      {initialLoadDone &&
-        attentionItems.map((item) => (
-          <AttentionBanner
-            key={item.id}
-            item={item}
-            onOpen={() => {
-              if (item.settingsSectionId === 'settings-sync') openSyncPanel(item.syncProvider ?? activeProvider)
-              window.requestAnimationFrame(() => scrollToSection(item.settingsSectionId))
+      <div className="space-y-4">
+        <header className="flex items-center justify-between px-3 pt-1">
+          <h1 className="text-2xl font-bold tracking-normal text-slate-700">Settings</h1>
+          <SegmentedControl
+            options={[
+              { value: 'basic', label: 'Basic' },
+              { value: 'advanced', label: 'Advanced' },
+            ]}
+            value={settingsView}
+            onChange={(next) => {
+              void updateSettingsView(next)
             }}
-            onDismiss={
-              item.dismissibleSetupNoticeId
-                ? () => {
-                    void dismissSetupNotice(item.dismissibleSetupNoticeId!).catch((error) => {
-                      console.error('[Setup reminder dismissal failed]', error)
-                    })
-                  }
-                : undefined
-            }
           />
-        ))}
+        </header>
+
+        {initialLoadDone &&
+          attentionItems.map((item) => (
+            <AttentionBanner
+              key={item.id}
+              item={item}
+              onOpen={() => {
+                if (item.settingsSectionId === 'settings-sync') openSyncPanel(item.syncProvider ?? activeProvider)
+                window.requestAnimationFrame(() => scrollToSection(item.settingsSectionId))
+              }}
+              onDismiss={
+                item.dismissibleSetupNoticeId
+                  ? () => {
+                      void dismissSetupNotice(item.dismissibleSetupNoticeId!).catch((error) => {
+                        console.error('[Setup reminder dismissal failed]', error)
+                      })
+                    }
+                  : undefined
+              }
+            />
+          ))}
+      </div>
 
       <div id="settings-ai" className="mx-3 scroll-mt-2 sm:mx-0 sm:scroll-mt-20">
         <LlmSection
@@ -444,8 +540,8 @@ export default function Settings() {
             setSyncStatus(null)
           }}
           onConnect={handleConnect}
-          onDisconnect={handleDisconnect}
-          onActivate={handleActivate}
+          onDisconnect={handleDisconnectWithAgentSafety}
+          onActivate={handleActivateWithAgentSafety}
           onTargetChange={(value) => {
             if (selectedSyncProvider === 'onedrive') setOneDriveTargetDraft(value)
             else if (selectedSyncProvider === 'dropbox') setDropboxPathDraft(value)
@@ -455,6 +551,21 @@ export default function Settings() {
           onPull={handlePull}
           onForcePull={handleForcePull}
           onPush={handlePush}
+          agentAccess={{
+            view: agentAccess.view,
+            busy: agentAccess.busy,
+            online,
+            targetReady:
+              selectedSyncProvider === 'dropbox'
+                ? Boolean(savedDropboxPath.trim())
+                : Boolean(googleDriveFileId),
+            statusKnown: agentAccess.statusKnown,
+            enabled: agentAccess.enabled,
+            boundToProvider: agentAccessBoundToSelectedProvider,
+            onEnable: handleEnableAgentAccess,
+            onDisable: handleDisableAgentAccess,
+            onRetry: agentAccess.load,
+          }}
         />
       </div>
 
