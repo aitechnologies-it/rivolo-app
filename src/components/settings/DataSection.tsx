@@ -146,11 +146,11 @@ export default function DataSection({
                   </>
                 ) : cloudHistory.provider === 'onedrive' ? (
                   <>
-                    Open the shared file in{' '}
+                    Open the notebook folder in{' '}
                     <a href={cloudHistory.url} target="_blank" rel="noreferrer" className="underline hover:text-slate-700">
                       OneDrive
                     </a>{' '}
-                    to view its version history.
+                    and select a daily Markdown file to view that day's version history.
                   </>
                 ) : (
                   <>

@@ -29,6 +29,8 @@ dist-ssr
 *.sw?
 
 plans/
+!docs/plans/
+!docs/plans/**
 
 # Local notes data (source file the local MCP server reads)
 mcp/inbox.md

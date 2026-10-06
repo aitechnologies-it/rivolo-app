@@ -1,6 +1,8 @@
 # Rivolo Notes MCP
 
-Local read-only MCP server for Rivolo notes. It reads the same single markdown file used by Dropbox sync, with entries separated by `<!-- day:YYYY-MM-DD -->` markers.
+Local read-only MCP server for Rivolo notes. It reads a single Markdown notebook, with entries separated by `<!-- day:YYYY-MM-DD -->` markers. Use a manual export from **Settings → Data**, or a local copy of the file synced by Dropbox or Google Drive.
+
+OneDrive sync uses a folder with one file per day. This server does not read that folder directly: export the notebook from Rivolo and point `RIVOLO_NOTES_FILE` at the exported file. Export again to make later changes available to the server.
 
 ## Build
 
@@ -10,10 +12,10 @@ npm run mcp:build
 
 ## Run
 
-Set `RIVOLO_NOTES_FILE` to your local Dropbox-synced Rivolo markdown file:
+Set `RIVOLO_NOTES_FILE` to your local Rivolo Markdown notebook:
 
 ```sh
-RIVOLO_NOTES_FILE="/Users/diego/Dropbox/path/to/inbox.md" npm run mcp:start
+RIVOLO_NOTES_FILE="/absolute/path/to/inbox.md" npm run mcp:start
 ```
 
 ## MCP Client Config
@@ -42,7 +44,7 @@ opencode in ~/.config/opencode/opencode.jsonc
       "env",
       "RIVOLO_NOTES_FILE=/path/to/inbox.md",
       "node",
-      "/Users/diego/code/dg/rivolo-app/dist-mcp/mcp/index.js"
+      "/absolute/path/to/rivolo-app/dist-mcp/mcp/index.js"
     ],
     "enabled": true
   }
