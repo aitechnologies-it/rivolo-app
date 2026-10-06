@@ -114,6 +114,7 @@ export default function AppShell() {
   const attentionItems = buildAttentionItems({
     persistFailureMessage,
     syncAttentionMessage: syncAttention?.message ?? null,
+    activeSyncProvider: activeProvider,
     setupNotices,
   })
   const isTimelineEmpty = timelineEmpty ?? !timelineHasNotes
@@ -327,7 +328,7 @@ export default function AppShell() {
   }, [showTrayRow])
 
   useKeyboardOffsetCssVar()
-  useAutoSync(syncStatus)
+  useAutoSync(syncStatus, activeProvider)
 
   useEffect(() => {
     if (!showShortcuts) return

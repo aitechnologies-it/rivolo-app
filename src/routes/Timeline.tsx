@@ -318,6 +318,7 @@ export default function Timeline() {
   const days = useDaysStore((state) => state.days)
   const loading = useDaysStore((state) => state.loading)
   const loadingMore = useDaysStore((state) => state.loadingMore)
+  const remoteRefreshVersion = useDaysStore((state) => state.remoteRefreshVersion)
   const hasMorePast = useDaysStore((state) => state.hasMorePast)
   const loadError = useDaysStore((state) => state.loadError)
   const loadTimeline = useDaysStore((state) => state.loadTimeline)
@@ -513,7 +514,8 @@ export default function Timeline() {
           padding: '0',
         },
         '.cm-gutters': {
-          display: 'none',
+          backgroundColor: 'transparent',
+          border: 'none',
         },
         '.cm-cursor, .cm-dropCursor': {
           borderLeft: '2px solid var(--theme-accent)',
@@ -745,7 +747,7 @@ export default function Timeline() {
     return () => {
       cancelled = true
     }
-  }, [mode, searchFilter, searchQuery])
+  }, [mode, searchFilter, searchQuery, remoteRefreshVersion])
 
   // --- Handlers ---
 

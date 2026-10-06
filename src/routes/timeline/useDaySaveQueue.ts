@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { flushDatabaseSave } from '../../lib/db'
 import { flushAutoPushToSync } from '../../store/syncActions'
+import { noteEditorChange, registerPendingEditorSaves } from '../../lib/pendingEditorSaves'
 
 type UseDaySaveQueueOptions = {
   canSync: boolean
@@ -13,6 +14,10 @@ export const useDaySaveQueue = ({ canSync, updateDayContent, onAutoPush }: UseDa
   const pendingSaveContentRef = useRef(new Map<string, string>())
   const daySaveQueueRef = useRef(new Map<string, Promise<void>>())
   const daySaveTokensRef = useRef(new Map<string, number>())
+
+  useEffect(() => registerPendingEditorSaves(() => [
+    ...pendingSaveContentRef.current.keys(), ...daySaveQueueRef.current.keys(),
+  ]), [])
 
   const clearPendingSaveTimeout = useCallback((dayId: string) => {
     const existing = saveTimeouts.current.get(dayId)
@@ -36,6 +41,7 @@ export const useDaySaveQueue = ({ canSync, updateDayContent, onAutoPush }: UseDa
   }, [])
 
   const setPendingSaveContent = useCallback((dayId: string, content: string) => {
+    noteEditorChange()
     pendingSaveContentRef.current.set(dayId, content)
   }, [])
 
@@ -81,6 +87,7 @@ export const useDaySaveQueue = ({ canSync, updateDayContent, onAutoPush }: UseDa
 
   const scheduleSave = useCallback(
     (dayId: string, content: string) => {
+      noteEditorChange()
       pendingSaveContentRef.current.set(dayId, content)
       const existing = saveTimeouts.current.get(dayId)
       if (existing) {
@@ -119,6 +126,7 @@ export const useDaySaveQueue = ({ canSync, updateDayContent, onAutoPush }: UseDa
 
   const saveDayImmediately = useCallback(
     (dayId: string, content: string) => {
+      noteEditorChange()
       clearPendingSaveTimeout(dayId)
       pendingSaveContentRef.current.delete(dayId)
       return enqueueDaySave(dayId, content)

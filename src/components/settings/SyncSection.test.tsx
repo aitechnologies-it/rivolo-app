@@ -22,6 +22,7 @@ const notConnectedSummary: SyncProviderSummary = {
 const bothConnected = {
   dropbox: connectedSummary,
   'google-drive': connectedSummary,
+  onedrive: notConnectedSummary,
 }
 
 const baseProps = {
@@ -85,13 +86,37 @@ const openSyncRow = async (id: string) => {
 }
 
 describe('SyncSection', () => {
-  it('starts with both provider rows collapsed when no sync provider is active', () => {
+  it('opens OneDrive on a notification request and lets the user collapse and reopen it', async () => {
+    const { rerender } = render(<SyncSection {...baseProps} provider="onedrive" openRequest={1} />)
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
+    await openSyncRow('onedrive')
+    expect(screen.queryByLabelText('Shared folder link or OneDrive folder path')).not.toBeInTheDocument()
+    rerender(<SyncSection {...baseProps} provider="onedrive" openRequest={2} />)
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
+  })
+
+  it('exposes a shared OneDrive target in Basic mode and disables sync while disconnected', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" targetDraft="https://1drv.ms/u/shared" />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toHaveValue('https://1drv.ms/u/shared')
+    expect(screen.getByRole('button', { name: 'Connect OneDrive' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Pull from OneDrive' })).toBeDisabled()
+    expect(screen.getByText(/Each Microsoft account needs edit access/)).toBeVisible()
+  })
+
+  it('disables target editing during an active transfer', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" syncBusy />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeDisabled()
+  })
+
+  it('starts with all provider rows collapsed when no sync provider is active', () => {
     render(<SyncSection {...baseProps} activeProvider={null} />)
 
     const rowHeaders = screen
       .getAllByRole('button')
       .filter((button) => button.getAttribute('aria-controls')?.startsWith('sync-panel-'))
-    expect(rowHeaders).toHaveLength(2)
+    expect(rowHeaders).toHaveLength(3)
     for (const header of rowHeaders) {
       expect(header).toHaveAttribute('aria-expanded', 'false')
     }
@@ -399,6 +424,7 @@ describe('SyncSection', () => {
         summaries={{
           dropbox: notConnectedSummary,
           'google-drive': notConnectedSummary,
+          onedrive: notConnectedSummary,
         }}
       />,
     )
@@ -422,6 +448,55 @@ describe('SyncSection', () => {
 
     rerender(<SyncSection {...baseProps} provider="dropbox" agentAccess={enabledAgentAccess} />)
     expect(screen.getByRole('heading', { name: 'Agent access' })).toBeInTheDocument()
+  })
+
+  it('keeps OneDrive target and disconnect available when hosted Agent access is unavailable', async () => {
+    const onDisconnect = vi.fn()
+    const onSaveTarget = vi.fn()
+    render(
+      <SyncSection
+        {...baseProps}
+        activeProvider="onedrive"
+        provider="onedrive"
+        summaries={{ ...bothConnected, onedrive: connectedSummary }}
+        targetDirty
+        onDisconnect={onDisconnect}
+        onSaveTarget={onSaveTarget}
+        agentAccess={{
+          ...enabledAgentAccess,
+          view: { state: 'error', profile: null, message: 'Hosted MCP is unavailable.' },
+          statusKnown: false,
+          enabled: false,
+          boundToProvider: false,
+        }}
+      />,
+    )
+
+    await openSyncRow('onedrive')
+    expect(screen.queryByRole('heading', { name: 'Agent access' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Enable for OneDrive' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSaveTarget).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect OneDrive' }))
+    expect(onDisconnect).toHaveBeenCalledOnce()
+  })
+
+  it('requires disabling existing Agent access when switching to OneDrive', async () => {
+    const onActivate = vi.fn()
+    render(
+      <SyncSection
+        {...baseProps}
+        provider="onedrive"
+        summaries={{ ...bothConnected, onedrive: connectedSummary }}
+        onActivate={onActivate}
+        agentAccess={{ ...enabledAgentAccess, boundToProvider: false }}
+      />,
+    )
+
+    await openSyncRow('onedrive')
+    await userEvent.click(screen.getByRole('button', { name: 'Disable Agent access, then use OneDrive' }))
+    expect(onActivate).toHaveBeenCalledOnce()
   })
 
   it('makes disable-before-switch explicit in the activation action', async () => {

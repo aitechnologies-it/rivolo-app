@@ -1,3 +1,6 @@
+import { useSyncPanelNavigation } from './settings/useSyncPanelNavigation'
+import { useOneDriveStore } from '../store/useOneDriveStore'
+import { validateOneDriveTarget } from '../lib/oneDrive'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import SegmentedControl from '../components/SegmentedControl'
@@ -16,7 +19,6 @@ import { getSetupNotices } from '../lib/setupAttention'
 import { buildAttentionItems } from '../lib/attention'
 import { DEFAULT_GOOGLE_DRIVE_FILE_NAME, getGoogleDrivePath } from '../lib/googleDriveState'
 import { claimPrimaryTabForSync } from '../lib/tabSyncCoordinator'
-import type { SyncProviderId } from '../lib/sync'
 import { useTabSyncState } from '../hooks/useTabSyncState'
 import {
   agentAccessDisableWarning,
@@ -73,6 +75,15 @@ export default function Settings() {
   const monospaceFont = useSettingsStore((state) => state.monospaceFont)
   const titleFont = useSettingsStore((state) => state.titleFont)
   const dismissedSetupNotices = useSettingsStore((state) => state.dismissedSetupNotices)
+  const oneDrive = useOneDriveStore()
+  const loadOneDriveState = oneDrive.loadState
+  useEffect(() => {
+    const refresh = () => { void loadOneDriveState().catch(() => undefined) }
+    window.addEventListener('rivolo:onedrive-progress', refresh)
+    return () => window.removeEventListener('rivolo:onedrive-progress', refresh)
+  }, [loadOneDriveState])
+  const [oneDriveTargetDraft, setOneDriveTargetDraft] = useState<string | null>(null)
+  const oneDriveTarget = oneDriveTargetDraft ?? oneDrive.filePath
   const dropboxFilePath = useDropboxStore((state) => state.filePath)
   const dropboxRemoteRev = useDropboxStore((state) => state.lastRemoteRev)
   const dropboxLastSyncAt = useDropboxStore((state) => state.lastSyncAt)
@@ -106,13 +117,12 @@ export default function Settings() {
 
   const [syncStatus, setSyncStatus] = useState<string | null>(null)
   const [online, setOnline] = useState(navigator.onLine)
-  const [syncProviderDraft, setSyncProviderDraft] = useState<SyncProviderId | null>(null)
   const [dropboxPathDraft, setDropboxPathDraft] = useState<string | null>(null)
   const [googleDriveFileNameDraft, setGoogleDriveFileNameDraft] = useState<string | null>(null)
   const [initialLoadDone, setInitialLoadDone] = useState(false)
   const agentAccess = useAgentAccess(online)
 
-  const selectedSyncProvider = syncProviderDraft ?? activeProvider ?? 'dropbox'
+  const { provider: selectedSyncProvider, selectProvider: setSyncProviderDraft, openPanel: openSyncPanel, openRequest: syncOpenRequest } = useSyncPanelNavigation(activeProvider, initialLoadDone)
   const settingsView = useSettingsStore((state) => state.settingsView)
   const updateSettingsView = useSettingsStore((state) => state.updateSettingsView)
   const showAdvanced = settingsView === 'advanced'
@@ -124,7 +134,9 @@ export default function Settings() {
   const isGoogleFileNameDirty = googleFileName.trim() !== savedGoogleDriveFileName
 
   const cloudHistory: CloudVersionHistory | null =
-    activeProvider === 'dropbox' && dropboxHasAuth
+    activeProvider === 'onedrive' && oneDrive.hasAuth
+      ? { provider: 'onedrive', fileName: 'shared notebook folder', url: 'https://onedrive.live.com/' }
+      : activeProvider === 'dropbox' && dropboxHasAuth
       ? {
           provider: 'dropbox',
           fileName: savedDropboxPath.split('/').pop() || DEFAULT_DROPBOX_PATH.slice(1),
@@ -147,11 +159,12 @@ export default function Settings() {
   useEffect(() => {
     void Promise.all([
       loadSettings(),
+      loadOneDriveState(),
       loadDropboxState(),
       loadGoogleDriveState(),
       loadSyncState(),
     ]).finally(() => setInitialLoadDone(true))
-  }, [loadDropboxState, loadGoogleDriveState, loadSettings, loadSyncState])
+  }, [loadOneDriveState, loadDropboxState, loadGoogleDriveState, loadSettings, loadSyncState])
 
   useEffect(() => {
     if (selectedSyncProvider !== 'google-drive') return
@@ -222,16 +235,24 @@ export default function Settings() {
     ],
   )
 
-  const selectedSummary = selectedSyncProvider === 'dropbox' ? dropboxSummary : googleDriveSummary
-  const selectedTarget = selectedSyncProvider === 'dropbox' ? dropboxPath : googleFileName
+  const oneDriveSummary = {
+    connected: oneDrive.hasAuth,
+    lastSync: formatSyncTime(oneDrive.lastSyncAt),
+    remoteVersion: oneDrive.lastRemoteRev ?? '—',
+    dirty: oneDrive.localDirty,
+    account: oneDrive.accountEmail ?? oneDrive.accountName ?? '—',
+    target: oneDrive.filePath,
+  }
+  const selectedSummary = selectedSyncProvider === 'onedrive' ? oneDriveSummary : selectedSyncProvider === 'dropbox' ? dropboxSummary : googleDriveSummary
+  const selectedTarget = selectedSyncProvider === 'onedrive' ? oneDriveTarget : selectedSyncProvider === 'dropbox' ? dropboxPath : googleFileName
   const selectedTargetDirty =
-    selectedSyncProvider === 'dropbox' ? isDropboxPathDirty : isGoogleFileNameDirty
+    selectedSyncProvider === 'onedrive' ? oneDriveTarget.trim() !== oneDrive.filePath : selectedSyncProvider === 'dropbox' ? isDropboxPathDirty : isGoogleFileNameDirty
   const agentAccessBoundToSelectedProvider =
     agentAccess.view.state === 'enabled' &&
     agentAccess.view.profile.provider === selectedSyncProvider
 
   const loadProviderStates = async () => {
-    await Promise.all([loadDropboxState(), loadGoogleDriveState()])
+    await Promise.all([loadOneDriveState(), loadDropboxState(), loadGoogleDriveState()])
   }
 
   const runWithAgentSafety = async (
@@ -286,11 +307,13 @@ export default function Settings() {
     event.target.value = ''
   }
 
+  const exportFileName = activeProvider === 'onedrive' || activeSyncStatus.targetName?.startsWith('https://')
+    ? 'rivolo-notes.md'
+    : (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
+
   const handleExport = async () => {
     const content = await exportMarkdownFromDb()
-    const filename =
-      (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
-    await shareOrDownload(filename, content)
+    await shareOrDownload(exportFileName, content)
   }
 
   const handleSaveSyncTarget = async () => {
@@ -301,7 +324,15 @@ export default function Settings() {
       return
     }
 
-    if (selectedSyncProvider === 'dropbox') {
+    if (selectedSyncProvider === 'onedrive') {
+      try {
+        await oneDrive.updateFilePath(validateOneDriveTarget(oneDriveTarget))
+        setOneDriveTargetDraft(null)
+      } catch (error) {
+        setSyncStatus(error instanceof Error ? error.message : 'Invalid OneDrive target.')
+        return
+      }
+    } else if (selectedSyncProvider === 'dropbox') {
       const nextPath = dropboxPath.trim() || DEFAULT_DROPBOX_PATH
       if (
         !(await runWithAgentSafety(
@@ -360,7 +391,7 @@ export default function Settings() {
     })
 
   const handleDisconnectWithAgentSafety = async () => {
-    if (activeProvider !== selectedSyncProvider && !agentAccessBoundToSelectedProvider) {
+    if (selectedSyncProvider === 'onedrive' || (activeProvider !== selectedSyncProvider && !agentAccessBoundToSelectedProvider)) {
       await handleDisconnect()
       return
     }
@@ -380,7 +411,7 @@ export default function Settings() {
       await agentAccess.enable({ provider: 'dropbox', path: savedDropboxPath })
       return
     }
-    if (!googleDriveFileId) return
+    if (selectedSyncProvider !== 'google-drive' || !googleDriveFileId) return
     await agentAccess.enable({ provider: 'google-drive', fileId: googleDriveFileId })
   }
 
@@ -403,6 +434,7 @@ export default function Settings() {
   const attentionItems = buildAttentionItems({
     persistFailureMessage,
     syncAttentionMessage: syncAttention?.message ?? null,
+    activeSyncProvider: activeProvider,
     setupNotices,
   })
 
@@ -418,7 +450,7 @@ export default function Settings() {
       document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [initialLoadDone, location.hash])
+  }, [initialLoadDone, location.hash, location.key, syncOpenRequest])
 
   return (
     <div className="space-y-4">
@@ -442,7 +474,10 @@ export default function Settings() {
             <AttentionBanner
               key={item.id}
               item={item}
-              onOpen={() => scrollToSection(item.settingsSectionId)}
+              onOpen={() => {
+                if (item.settingsSectionId === 'settings-sync') openSyncPanel(item.syncProvider ?? activeProvider)
+                window.requestAnimationFrame(() => scrollToSection(item.settingsSectionId))
+              }}
               onDismiss={
                 item.dismissibleSetupNoticeId
                   ? () => {
@@ -484,7 +519,9 @@ export default function Settings() {
         <SyncSection
           activeProvider={activeProvider}
           provider={selectedSyncProvider}
+          openRequest={syncOpenRequest}
           summaries={{
+            onedrive: oneDriveSummary,
             dropbox: dropboxSummary,
             'google-drive': googleDriveSummary,
           }}
@@ -494,7 +531,7 @@ export default function Settings() {
           targetDraft={selectedTarget}
           targetDirty={selectedTargetDirty}
           syncBusy={syncing}
-          status={syncStatus}
+          status={syncStatus ?? (selectedSyncProvider === 'onedrive' ? oneDrive.migrationMessage ?? oneDrive.offlineProgress : null)}
           advanced={showAdvanced}
           showForcePull={pullRefused || selectedAttention?.operation === 'pull'}
           showForcePush={pushBlocked || selectedAttention?.operation === 'push'}
@@ -506,7 +543,8 @@ export default function Settings() {
           onDisconnect={handleDisconnectWithAgentSafety}
           onActivate={handleActivateWithAgentSafety}
           onTargetChange={(value) => {
-            if (selectedSyncProvider === 'dropbox') setDropboxPathDraft(value)
+            if (selectedSyncProvider === 'onedrive') setOneDriveTargetDraft(value)
+            else if (selectedSyncProvider === 'dropbox') setDropboxPathDraft(value)
             else setGoogleDriveFileNameDraft(value)
           }}
           onSaveTarget={handleSaveSyncTarget}
@@ -567,9 +605,7 @@ export default function Settings() {
 
       <div id="settings-data" className="mx-3 scroll-mt-2 sm:mx-0 sm:scroll-mt-20">
         <DataSection
-          exportFileName={
-            (activeSyncStatus.targetName || savedDropboxPath).split('/').pop() || 'inbox.md'
-          }
+          exportFileName={exportFileName}
           importStatus={importStatus}
           onImport={handleImport}
           onExport={handleExport}

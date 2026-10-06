@@ -12,7 +12,11 @@
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "mcp:worker:build": "tsc -p tsconfig.mcp-worker.json && wrangler deploy --dry-run --config wrangler.mcp.toml --outdir dist-mcp-worker",
     "mcp:start": "node dist-mcp/mcp/index.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:cloud": "npm run build && wrangler pages dev -c wrangler.toml -c workers/onedrive-events/wrangler.toml",
+    "test:events-runtime": "node scripts/check-onedrive-events-runtime.mjs",
+    "dev:events": "wrangler dev --config workers/onedrive-events/wrangler.toml --port 8790",
+    "deploy:events": "wrangler deploy --config workers/onedrive-events/wrangler.toml"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",

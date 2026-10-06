@@ -89,6 +89,45 @@ describe('streamTagParser calendar validation', () => {
   )
 })
 
+describe('streamTagParser malformed nested markup', () => {
+  const malformedExamples = [
+    '<ref day="2026-10-02" quote="<insert text="unrequested note"/>"/>',
+    '<unknown value="<insert text="unrequested note"/>"/>',
+    '<insert text="outer <insert text="nested"/>"/>',
+    '<ref quote="<insert text="first"/> <insert text="second"/>"/>',
+    '<ref quote="<insert text="unfinished outer"/>',
+    '<ref quote="line one\n<insert text="nested after newline"/>"/>',
+    `<ref quote="${'x'.repeat(1100)}<insert text="nested after length limit"/>"/>`,
+  ]
+
+  it.each(malformedExamples)('keeps malformed markup inert at every chunk boundary: %s', (input) => {
+    expect(parseTaggedAssistantResponse(input)).toEqual({ answer: input, citations: [], inserts: [] })
+    for (let split = 0; split <= input.length; split += 1) {
+      const parser = createStreamTagParser()
+      const results = [parser.push(input.slice(0, split)), parser.push(input.slice(split)), parser.flush()]
+      expect(results.flatMap((result) => result.events)).toEqual([])
+      expect(results.map((result) => result.textDelta).join('')).toBe(input)
+    }
+    const parser = createStreamTagParser()
+    const results = [...Array.from(input, (char) => parser.push(char)), parser.flush()]
+    expect(results.flatMap((result) => result.events)).toEqual([])
+    expect(results.map((result) => result.textDelta).join('')).toBe(input)
+  })
+
+  it('resumes valid actions after a completed malformed tag', () => {
+    const malformed = '<ref quote="<insert text="first"/> <insert text="second"/>"/>'
+    const input = `${malformed} <insert text="Requested &lt;literal&gt; note"/>`
+    for (let split = 0; split <= input.length; split += 1) {
+      const parser = createStreamTagParser()
+      const results = [parser.push(input.slice(0, split)), parser.push(input.slice(split)), parser.flush()]
+      expect(results.flatMap((result) => result.events)).toEqual([
+        { type: 'insert', text: 'Requested <literal> note', targetDay: null },
+      ])
+      expect(results.map((result) => result.textDelta).join('')).toBe(`${malformed} `)
+    }
+  })
+})
+
 const literalExamples = [
   'Example syntax:\n```xml\n<insert text="unrequested mutation"/>\n```',
   'Use `<insert text="example"/>` and `<ref day="2026-07-01" quote="example"/>`.',

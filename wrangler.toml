@@ -2,6 +2,11 @@ name = "rivolo-app"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-06-21"
 
+[[durable_objects.bindings]]
+name = "ONEDRIVE_EVENTS"
+class_name = "OneDriveEvents"
+script_name = "rivolo-onedrive-events"
+
 # Public identifiers only. Secrets (client secrets, token encryption keys)
 # must NOT go here — set them as encrypted Secrets in the Cloudflare dashboard.
 [vars]
@@ -9,43 +14,59 @@ GOOGLE_CLIENT_ID = "535138004412-dme8a9sitbamhg00jiln5eang5b7nf8s.apps.googleuse
 GOOGLE_ALLOWED_ORIGINS = "http://localhost:8788"
 DROPBOX_CLIENT_ID = "u97wik4j3zxkssp"
 DROPBOX_ALLOWED_ORIGINS = "http://localhost:8788"
-MCP_OAUTH_ISSUER_URL = "https://rivolo.app/api/mcp/oauth"
-MCP_RESOURCE_URL = "https://mcp.rivolo.app/mcp"
-VITE_MCP_ENDPOINT = "https://mcp.rivolo.app/mcp"
+ONEDRIVE_CLIENT_ID = "f84271d0-b942-4bd6-9a20-5ac66bfb1c2f"
+ONEDRIVE_ALLOWED_ORIGINS = "http://localhost:8788"
+MCP_OAUTH_ISSUER_URL = "https://aitlab.it/api/mcp/oauth"
+MCP_RESOURCE_URL = "https://mcp.aitlab.it/mcp"
+VITE_MCP_ENDPOINT = "https://mcp.aitlab.it/mcp"
 
 [[d1_databases]]
 binding = "MCP_DB"
 database_name = "rivolo-mcp"
-database_id = "3e6d7acf-18f7-4b22-aed2-cee616d791a4"
+database_id = "daf4016f-71ca-41e7-b03b-641785a2f76c"
 migrations_dir = "migrations"
 
 [env.production.vars]
 GOOGLE_CLIENT_ID = "535138004412-dme8a9sitbamhg00jiln5eang5b7nf8s.apps.googleusercontent.com"
-GOOGLE_ALLOWED_ORIGINS = "https://rivolo.app"
+GOOGLE_ALLOWED_ORIGINS = "https://aitlab.it"
 DROPBOX_CLIENT_ID = "u97wik4j3zxkssp"
-DROPBOX_ALLOWED_ORIGINS = "https://rivolo.app"
-MCP_OAUTH_ISSUER_URL = "https://rivolo.app/api/mcp/oauth"
-MCP_RESOURCE_URL = "https://mcp.rivolo.app/mcp"
-VITE_MCP_ENDPOINT = "https://mcp.rivolo.app/mcp"
+DROPBOX_ALLOWED_ORIGINS = "https://aitlab.it"
+MCP_OAUTH_ISSUER_URL = "https://aitlab.it/api/mcp/oauth"
+MCP_RESOURCE_URL = "https://mcp.aitlab.it/mcp"
+VITE_MCP_ENDPOINT = "https://mcp.aitlab.it/mcp"
+ONEDRIVE_CLIENT_ID = "f84271d0-b942-4bd6-9a20-5ac66bfb1c2f"
+ONEDRIVE_ALLOWED_ORIGINS = "https://aitlab.it"
+
+[[env.production.durable_objects.bindings]]
+name = "ONEDRIVE_EVENTS"
+class_name = "OneDriveEvents"
+script_name = "rivolo-onedrive-events"
 
 [[env.production.d1_databases]]
 binding = "MCP_DB"
 database_name = "rivolo-mcp"
-database_id = "3e6d7acf-18f7-4b22-aed2-cee616d791a4"
+database_id = "daf4016f-71ca-41e7-b03b-641785a2f76c"
 migrations_dir = "migrations"
 
 # Pages previews use the dev database, never the production database.
 [env.preview.vars]
 GOOGLE_CLIENT_ID = "535138004412-dme8a9sitbamhg00jiln5eang5b7nf8s.apps.googleusercontent.com"
 DROPBOX_CLIENT_ID = "u97wik4j3zxkssp"
-GOOGLE_ALLOWED_ORIGINS = "https://codex-mcp-experimental.rivolo.pages.dev,https://dev.rivolo.pages.dev"
-DROPBOX_ALLOWED_ORIGINS = "https://codex-mcp-experimental.rivolo.pages.dev,https://dev.rivolo.pages.dev"
-MCP_OAUTH_ISSUER_URL = "https://dev.rivolo.pages.dev/api/mcp/oauth"
-MCP_RESOURCE_URL = "https://mcp-dev.rivolo.app/mcp"
-VITE_MCP_ENDPOINT = "https://mcp-dev.rivolo.app/mcp"
+ONEDRIVE_CLIENT_ID = "f84271d0-b942-4bd6-9a20-5ac66bfb1c2f"
+ONEDRIVE_ALLOWED_ORIGINS = "https://dev.aitlab.it"
+GOOGLE_ALLOWED_ORIGINS = "https://dev.aitlab.it"
+DROPBOX_ALLOWED_ORIGINS = "https://dev.aitlab.it"
+MCP_OAUTH_ISSUER_URL = "https://dev.aitlab.it/api/mcp/oauth"
+MCP_RESOURCE_URL = "https://mcp-dev.aitlab.it/mcp"
+VITE_MCP_ENDPOINT = "https://mcp-dev.aitlab.it/mcp"
+
+[[env.preview.durable_objects.bindings]]
+name = "ONEDRIVE_EVENTS"
+class_name = "OneDriveEvents"
+script_name = "rivolo-onedrive-events-dev"
 
 [[env.preview.d1_databases]]
 binding = "MCP_DB"
 database_name = "rivolo-mcp-dev"
-database_id = "c5596649-3ab7-46db-8947-54135c085c3b"
+database_id = "3f72928e-d1b2-4596-87f1-ff98b96327e0"
 migrations_dir = "migrations"

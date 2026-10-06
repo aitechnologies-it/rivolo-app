@@ -148,6 +148,17 @@ export const run = async (sql: string, params: (string | number | null)[] = []) 
   markDatabaseChanged(db)
 }
 
+// Guards and writes run synchronously in one transaction: editor events cannot
+// slip between a revision check and replacing a downloaded day's content.
+export const runAtomicDatabaseMutation = async <T>(callback: (db: RivoloDatabase) => T) => {
+  assertDatabaseWritable()
+  const db = await getDatabase()
+  let result!: T
+  db.transaction(() => { result = callback(db) })
+  markDatabaseChanged(db)
+  return result
+}
+
 export const runBulkDatabaseMutation = async <T>(callback: () => Promise<T>) => {
   assertDatabaseWritable()
   const isOutermostBulk = bulkMutationDepth === 0

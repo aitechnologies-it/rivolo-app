@@ -76,7 +76,7 @@ const createEnv = (db: SqliteD1): McpOAuthEnv => ({
   MCP_DB: db as unknown as D1Database,
   MCP_PROVIDER_TOKEN_ENCRYPTION_KEY: 'profile-token-secret',
   MCP_PROFILE_SESSION_ENCRYPTION_KEY: 'profile-session-secret',
-  MCP_ALLOWED_ORIGINS: 'https://rivolo.app',
+  MCP_ALLOWED_ORIGINS: 'https://aitlab.it',
 })
 
 const createProfile = async (env: McpOAuthEnv) =>
@@ -191,7 +191,7 @@ const completeConsent = async (
         ['decision', 'allow'],
       ]),
       {
-        Origin: 'https://rivolo.app',
+        Origin: 'https://aitlab.it',
         Cookie: cookie,
       },
     ),
@@ -252,10 +252,10 @@ describe('MCP OAuth metadata and registration', () => {
       protectedMetadata,
     )
     expect(getMcpProtectedResourceMetadataUrl()).toBe(
-      'https://mcp.rivolo.app/.well-known/oauth-protected-resource/mcp',
+      'https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp',
     )
     expect(createMcpBearerChallenge()).toContain(
-      'resource_metadata="https://mcp.rivolo.app/.well-known/oauth-protected-resource/mcp"',
+      'resource_metadata="https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp"',
     )
   })
 
@@ -549,7 +549,7 @@ describe('MCP OAuth authorization and tokens', () => {
         }),
         {
           ...env,
-          MCP_RESOURCE_URL: 'https://mcp.rivolo.app/other-resource',
+          MCP_RESOURCE_URL: 'https://mcp.aitlab.it/other-resource',
         },
       ),
     ).toBeNull()
@@ -662,7 +662,7 @@ describe('MCP OAuth authorization and tokens', () => {
           ['profile_id', '22222222-2222-4222-8222-222222222222'],
           ['decision', 'allow'],
         ]),
-        { Origin: 'https://rivolo.app', Cookie: cookie },
+        { Origin: 'https://aitlab.it', Cookie: cookie },
       ),
       env,
     )

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import AppShell from './components/AppShell'
 import Timeline from './routes/Timeline.tsx'
 
+const OneDriveCallback = lazy(() => import('./routes/OneDriveCallback.tsx'))
 const DropboxCallback = lazy(() => import('./routes/DropboxCallback.tsx'))
 const Privacy = lazy(() => import('./routes/Privacy.tsx'))
 const Settings = lazy(() => import('./routes/Settings.tsx'))
@@ -24,6 +25,7 @@ export default function App() {
           path="/auth/dropbox/callback"
           element={<Suspense fallback={null}><DropboxCallback /></Suspense>}
         />
+        <Route path="/auth/onedrive/callback" element={<Suspense fallback={null}><OneDriveCallback /></Suspense>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -1,5 +1,7 @@
+import { DEFAULT_MCP_RESOURCE_URL } from './mcpOAuthMetadata'
+
 export const RIVOLO_MCP_ENDPOINT =
-  import.meta.env.VITE_MCP_ENDPOINT || 'https://mcp.rivolo.app/mcp'
+  import.meta.env.VITE_MCP_ENDPOINT || DEFAULT_MCP_RESOURCE_URL
 
 type AgentAccessProfileBase = {
   profileId: string

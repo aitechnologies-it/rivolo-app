@@ -153,7 +153,7 @@ const oauthAuth = (
   clientId: 'rvc_oauth-client-example',
   scopes,
   expiresAt: 1_800_000_000,
-  resource: 'https://mcp.rivolo.app/mcp',
+  resource: 'https://mcp.aitlab.it/mcp',
 })
 
 const createEnv = (db = new FakeWriteD1()): RemoteMcpEnv => ({
@@ -170,7 +170,7 @@ const mcpRequest = (
   params?: Record<string, unknown>,
   options: { origin?: string; token?: string } = {},
 ) =>
-  new Request('https://mcp.rivolo.app/mcp', {
+  new Request('https://mcp.aitlab.it/mcp', {
     method: 'POST',
     headers: {
       Accept: 'application/json, text/event-stream',
@@ -266,7 +266,7 @@ describe('hosted MCP Streamable HTTP endpoint', () => {
     )
     expect(unauthorized.status).toBe(401)
     expect(unauthorized.headers.get('WWW-Authenticate')).toBe(
-      'Bearer resource_metadata="https://mcp.rivolo.app/.well-known/oauth-protected-resource/mcp", scope="notes:read notes:write"',
+      'Bearer resource_metadata="https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp", scope="notes:read notes:write"',
     )
 
     const rejectedOrigin = await handleRemoteMcpRequest(
@@ -281,7 +281,7 @@ describe('hosted MCP Streamable HTTP endpoint', () => {
   it('declines the standalone SSE notification stream before auth', async () => {
     const authenticate = vi.fn().mockResolvedValue(dropboxAuth())
     const response = await handleRemoteMcpRequest(
-      new Request('https://mcp.rivolo.app/mcp', {
+      new Request('https://mcp.aitlab.it/mcp', {
         method: 'GET',
         headers: {
           Accept: 'text/event-stream',
@@ -295,6 +295,32 @@ describe('hosted MCP Streamable HTTP endpoint', () => {
     expect(response.status).toBe(405)
     expect(response.headers.get('Allow')).toBe('POST')
     expect(authenticate).not.toHaveBeenCalled()
+  })
+
+  it('uses the configured MCP resource origin without trusting upstream browser origins', async () => {
+    const env = {
+      ...createEnv(),
+      MCP_RESOURCE_URL: 'https://mcp-dev.aitlab.it/mcp',
+      MCP_ALLOWED_ORIGINS: '',
+    }
+    const authenticate = vi.fn().mockResolvedValue(null)
+    const dependencies = { ...defaultDependencies(null), authenticate }
+
+    const allowed = await handleRemoteMcpRequest(
+      mcpRequest('tools/list', undefined, { origin: 'https://mcp-dev.aitlab.it' }),
+      env,
+      dependencies,
+    )
+    expect(allowed.status).toBe(401)
+    expect(allowed.headers.get('WWW-Authenticate')).toContain('https://mcp-dev.aitlab.it/')
+
+    const rejected = await handleRemoteMcpRequest(
+      mcpRequest('tools/list', undefined, { origin: 'https://mcp.rivolo.app' }),
+      env,
+      dependencies,
+    )
+    expect(rejected.status).toBe(403)
+    expect(authenticate).toHaveBeenCalledOnce()
   })
 
   it('lists only tools allowed by PAT scopes', async () => {
@@ -532,7 +558,7 @@ describe('hosted MCP Streamable HTTP endpoint', () => {
 describe('hosted MCP Worker discovery', () => {
   it('answers a GET notification stream on the MCP endpoint with 405', async () => {
     const response = await worker.fetch(
-      new Request('https://mcp.rivolo.app/mcp', {
+      new Request('https://mcp.aitlab.it/mcp', {
         method: 'GET',
         headers: { Accept: 'text/event-stream' },
       }),
@@ -546,7 +572,7 @@ describe('hosted MCP Worker discovery', () => {
   it('serves protected-resource metadata from the MCP origin', async () => {
     const response = await worker.fetch(
       new Request(
-        'https://mcp.rivolo.app/.well-known/oauth-protected-resource/mcp',
+        'https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp',
       ),
       createEnv(),
     )
@@ -554,8 +580,8 @@ describe('hosted MCP Worker discovery', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     await expect(response.json()).resolves.toEqual({
-      resource: 'https://mcp.rivolo.app/mcp',
-      authorization_servers: ['https://rivolo.app/api/mcp/oauth'],
+      resource: 'https://mcp.aitlab.it/mcp',
+      authorization_servers: ['https://aitlab.it/api/mcp/oauth'],
       scopes_supported: ['notes:read', 'notes:write'],
       bearer_methods_supported: ['header'],
       resource_name: 'Rivolo notes',
