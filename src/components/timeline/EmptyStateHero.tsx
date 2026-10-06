@@ -30,8 +30,8 @@ export default function EmptyStateHero({
       <div className="hero-copy max-w-[550px] space-y-4" style={{ fontFamily: heroFontFamily }}>
         {identity === 'ait' ? (
           <>
-            <p className="text-2xl text-slate-600">Your team’s daily stream.</p>
-            <p className="text-2xl text-slate-600">Notes, ideas, and decisions,<br className="hero-break" /> one day at a time.</p>
+            <p className="text-2xl text-slate-600">Your team’s daily flow.</p>
+            <p className="text-2xl text-slate-600">Add your voice to the day.</p>
           </>
         ) : (
           <>
@@ -39,7 +39,7 @@ export default function EmptyStateHero({
             <p className="text-2xl text-slate-600">Structure emerges only <br className="hero-break" /> when you ask for it.</p>
           </>
         )}
-        <p className="text-2xl text-slate-600">Stop organizing. Start writing.</p>
+        <p className="text-2xl text-slate-600">{identity === 'ait' ? 'Find what matters when you need it.' : 'Stop organizing. Start writing.'}</p>
       </div>
       <div className="flex flex-col items-center gap-4">
         <button className={`${buttonPrimaryClassName} px-6 py-3 text-base`} type="button" onClick={onStartToday}>
