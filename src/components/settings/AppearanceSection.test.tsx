@@ -8,6 +8,8 @@ type Overrides = Partial<React.ComponentProps<typeof AppearanceSection>>
 const renderSection = (overrides: Overrides = {}) => {
   const props: React.ComponentProps<typeof AppearanceSection> = {
     themePreference: 'system',
+    appIdentity: 'rivolo',
+    onAppIdentityChange: vi.fn(),
     wallpaper: 'thoughts-light',
     highlightInputMode: false,
     autocorrection: true,
@@ -29,6 +31,15 @@ const renderSection = (overrides: Overrides = {}) => {
 }
 
 describe('AppearanceSection', () => {
+  it.each([false, true])('offers the identity selector with advanced=%s', async (advanced) => {
+    const onAppIdentityChange = vi.fn()
+    renderSection({ advanced, appIdentity: 'ait', onAppIdentityChange })
+    expect(screen.getByRole('button', { name: 'AIT', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('img', { name: 'Rivolo x AIT app icon' })).toHaveAttribute('src', '/icons/ait-180.png')
+    await userEvent.click(screen.getByRole('button', { name: 'Rivolo', exact: true }))
+    expect(onAppIdentityChange).toHaveBeenCalledExactlyOnceWith('rivolo')
+  })
+
   it('shows the selected theme and emits theme changes', async () => {
     const onThemePreferenceChange = vi.fn()
     renderSection({ themePreference: 'dark', onThemePreferenceChange })

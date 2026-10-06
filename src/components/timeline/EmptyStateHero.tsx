@@ -1,4 +1,6 @@
 import type { MutableRefObject } from 'react'
+import AppLogo from '../AppLogo'
+import { useSettingsStore } from '../../store/useSettingsStore'
 
 type EmptyStateHeroProps = {
   isLogoAnimating: boolean
@@ -15,29 +17,29 @@ export default function EmptyStateHero({
   onStartToday,
   heroLogoRef,
 }: EmptyStateHeroProps) {
+  const identity = useSettingsStore((state) => state.appIdentity)
+
   return (
     <section className="hero-empty relative my-auto flex min-h-[60vh] flex-col items-center justify-center gap-8 px-6 py-16 text-center sm:px-12 sm:py-20">
       <div className="absolute right-0 -top-20 h-44 w-44 rounded-full bg-[rgb(var(--theme-accent-rgb)/0.10)] blur-3xl lg:-right-16" aria-hidden="true" />
       <div className="absolute -bottom-24 left-0 h-36 w-36 rounded-full bg-[rgb(var(--theme-accent-rgb)/0.10)] blur-3xl lg:-left-10" aria-hidden="true" />
       <div className="relative flex items-center justify-center">
         <span className="absolute -inset-6 rounded-full bg-white/70 blur-2xl" aria-hidden="true" />
-        <img
-          ref={heroLogoRef}
-          src="/logo.svg"
-          alt=""
-          className={`hero-logo relative h-16 w-auto drop-shadow-[0_12px_30px_rgba(15,23,42,0.16)] transition-opacity duration-300 sm:h-20 ${
-            isLogoAnimating ? 'opacity-0' : 'opacity-100'
-          }`}
-        />
+        <AppLogo identity={identity} size="hero" logoRef={heroLogoRef} animating={isLogoAnimating} />
       </div>
       <div className="hero-copy max-w-[550px] space-y-4" style={{ fontFamily: heroFontFamily }}>
-        <p className="text-2xl text-slate-600">
-          Rivolo replaces notes <br className="hero-break" /> with a daily flow.
-        </p>
-        <p className="text-2xl text-slate-600">
-          Structure emerges only <br className="hero-break" /> when you ask for it.
-        </p>
-        <p className="text-2xl text-slate-600">Stop organizing. Start writing.</p>
+        {identity === 'ait' ? (
+          <>
+            <p className="text-2xl text-slate-600">Your team’s daily flow.</p>
+            <p className="text-2xl text-slate-600">Add your voice to the day.</p>
+          </>
+        ) : (
+          <>
+            <p className="text-2xl text-slate-600">Rivolo replaces notes <br className="hero-break" /> with a daily flow.</p>
+            <p className="text-2xl text-slate-600">Structure emerges only <br className="hero-break" /> when you ask for it.</p>
+          </>
+        )}
+        <p className="text-2xl text-slate-600">{identity === 'ait' ? 'Structure emerges only when you ask for it.' : 'Stop organizing. Start writing.'}</p>
       </div>
       <div className="flex flex-col items-center gap-4">
         <button className={`${buttonPrimaryClassName} px-6 py-3 text-base`} type="button" onClick={onStartToday}>
