@@ -52,10 +52,16 @@ export default function Privacy() {
           <p>
             <span className="font-semibold text-slate-700">D) Optional cloud sync</span>
             <br />
-            If you connect Dropbox or Google Drive, the selected provider processes the notes data you choose to
-            sync. For both providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
+            If you connect Dropbox, Google Drive, or OneDrive, the selected provider processes the notes data you choose to
+            sync. OneDrive daily files also contain line editor names and recorded edit dates, visible to people who
+            can read the notebook folder. For these providers, a Cloudflare Pages Function exchanges and refreshes OAuth credentials using an
             encrypted HttpOnly cookie; note contents are transferred directly between your browser and the selected
-            provider and do not pass through those functions.
+            provider and do not pass through those functions. For OneDrive live updates, a Cloudflare function uses
+            your access token to verify notebook folder access with Microsoft Graph, then issues a short-lived encrypted
+            WebSocket ticket. The relay distributes day/file identifiers and revisions, never note text or author names.
+            It stores the latest revision per file in a room identified by a hash of the folder identifier.
+            A migration registry also retains source/destination identifiers, migration status and coordination
+            leases so devices use the same daily notebook folder. It does not store note contents.
           </p>
         </div>
 
@@ -64,28 +70,28 @@ export default function Privacy() {
         </h2>
         <p className="mt-2">
           Rivolo does not use analytics, advertising, or profiling cookies. It uses one first-party technical cookie
-          per provider, only when you explicitly connect Google Drive or Dropbox:
+          per provider, only when you explicitly connect Google Drive, Dropbox, or OneDrive:
         </p>
         <div className="mt-2 space-y-2">
           <p>
             <span className="font-semibold text-slate-700">Cloud sync refresh cookies</span>
             <br />
-            Names: <code className="break-all text-xs">rivolo_gdrive_refresh</code> (Google Drive) and{' '}
-            <code className="break-all text-xs">rivolo_dropbox_refresh</code> (Dropbox). Purpose: keep the sync
+            Names: <code className="break-all text-xs">rivolo_gdrive_refresh</code> (Google Drive),{' '}
+            <code className="break-all text-xs">rivolo_dropbox_refresh</code> (Dropbox), and <code className="break-all text-xs">rivolo_onedrive_refresh</code> (OneDrive). Purpose: keep the sync
             connection working by obtaining new short-lived access tokens without repeatedly asking you to sign
             in. Contents: an OAuth refresh credential encrypted by Rivolo before storage. Duration: up to 400 days
             from its latest refresh, or earlier if you disconnect the provider, revoke access, the credential expires,
             or you clear browser data. Scope and protections: first-party, limited to{' '}
             <code className="break-all text-xs">/api/google-drive</code> or{' '}
-            <code className="break-all text-xs">/api/dropbox</code> respectively, HttpOnly, Secure on HTTPS, and
+            <code className="break-all text-xs">/api/dropbox</code>, or <code className="break-all text-xs">/api/onedrive</code> respectively, HttpOnly, Secure on HTTPS, and
             SameSite=Strict. They are not available to browser JavaScript and are not used for tracking or profiling.
           </p>
           <p>
             <span className="font-semibold text-slate-700">Other technical browser storage</span>
             <br />
             IndexedDB stores the local notes database, chat history, settings, optional AI API keys, and sync
-            metadata. Session storage temporarily holds Dropbox OAuth validation data and the timeline scroll
-            position. Local storage holds the optional debug-logging preference and technical tab-coordination
+            metadata, per-day OneDrive baselines, migration recovery snapshots and pending event identifiers. Session storage temporarily holds Dropbox and OneDrive OAuth validation data and the timeline scroll
+            position. Older versions also queued OneDrive event identifiers in local storage. Local storage holds the optional debug-logging preference and technical tab-coordination
             entries (a random per-tab identifier and a data-revision counter, with no notes content or personal
             data) that let multiple open Rivolo tabs agree which one runs sync. The PWA service
             worker uses browser cache storage for app files needed for offline use. These mechanisms are used only to
@@ -101,17 +107,18 @@ export default function Privacy() {
             Provide and secure the app (including hosting/CDN via Cloudflare): Art. 6(1)(f) legitimate interests.
           </li>
           <li>Selected AI provider feature (optional): Art. 6(1)(a) consent.</li>
-          <li>Dropbox or Google Drive sync (optional): Art. 6(1)(a) consent.</li>
+          <li>Dropbox, Google Drive, or OneDrive sync (optional): Art. 6(1)(a) consent.</li>
         </ul>
         <p className="mt-2">You can use Rivolo without configuring an AI provider or cloud sync.</p>
 
         <h2 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">6) Recipients</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li>Cloudflare (hosting/CDN/security and Google Drive/Dropbox OAuth credential exchange)</li>
+          <li>Cloudflare (hosting/CDN/security and Google Drive/Dropbox/OneDrive OAuth credential exchange, and OneDrive update events and migration coordination)</li>
           <li>Google (Gemini API), Anthropic, or OpenAI, only when selected for an AI request</li>
           <li>The operator of an OpenAI-compatible endpoint you choose, only when that endpoint is selected</li>
           <li>Dropbox (sync provider)</li>
           <li>Google Drive (sync provider)</li>
+          <li>Microsoft OneDrive (sync provider)</li>
         </ul>
 
         <h2 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">7) International transfers</h2>
@@ -130,9 +137,10 @@ export default function Privacy() {
           </li>
           <li>Cloudflare technical/security data: retained per operational/security configuration.</li>
           <li>
-            AI provider, custom endpoint, Dropbox, and Google Drive data: subject to the selected operator's retention
-            practices and your account settings. Disconnecting Google Drive or Dropbox clears that provider's refresh
-            credential cookie and requests revocation from the provider.
+            AI provider, custom endpoint, Dropbox, Google Drive, and OneDrive data: subject to the selected operator's retention
+            practices and your account settings. Disconnecting Google Drive, Dropbox, or OneDrive clears that provider's refresh
+            credential cookie. Google Drive and Dropbox also receive a revocation request. For OneDrive, remove
+            the app grant in your Microsoft account settings to revoke consent.
           </li>
         </ul>
 

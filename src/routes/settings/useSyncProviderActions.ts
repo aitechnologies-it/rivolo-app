@@ -1,3 +1,4 @@
+import { startOneDriveAuth } from '../../lib/oneDriveAuth'
 import { useState } from 'react'
 import { startDropboxAuth } from '../../lib/dropbox'
 import { prepareGoogleDriveAuth, startGoogleDriveAuth } from '../../lib/googleDriveAuth'
@@ -5,7 +6,7 @@ import { isImportSafetyError } from '../../lib/importExport'
 import { disconnectProvider, type SyncProviderId } from '../../lib/sync'
 import { SYNC_PROVIDER_LABELS } from '../../lib/syncState'
 import { claimPrimaryTabForSync } from '../../lib/tabSyncCoordinator'
-import { blockedPushMessage, pullFromSyncAndRefresh, pushToSyncAndRefresh } from '../../store/syncActions'
+import { blockedPushMessage, pullFromSyncAndRefresh, pushToSyncAndRefresh, recordSyncAttention } from '../../store/syncActions'
 
 type UseSyncProviderActionsParams = {
   provider: SyncProviderId
@@ -68,6 +69,13 @@ export const useSyncProviderActions = ({
     }
     if (!requireSafeSyncTab()) return
 
+    if (provider === 'onedrive') {
+      void startOneDriveAuth().catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'OneDrive connect failed.')
+      })
+      return
+    }
+
     if (provider === 'dropbox') {
       void startDropboxAuth().catch((error) => {
         setStatus(error instanceof Error ? error.message : 'Dropbox connect failed.')
@@ -127,6 +135,12 @@ export const useSyncProviderActions = ({
     return true
   }
 
+  const reportSyncFailure = (operation: 'pull' | 'push', error: unknown) => {
+    const message = error instanceof Error ? error.message : `${label} ${operation} failed.`
+    setStatus(message)
+    if (provider === 'onedrive') recordSyncAttention(operation, message)
+  }
+
   const runPull = async (options: { force: boolean; allowUnsafeImport: boolean }) => {
     const result = await pullFromSyncAndRefresh(options)
     await loadProviderStates()
@@ -140,7 +154,7 @@ export const useSyncProviderActions = ({
     setStatus(null)
     if (!requireActive()) return
     if (!requireSafeSyncTab()) return
-    if (localDirty) {
+    if (localDirty && provider !== 'onedrive') {
       setPullRefused(true)
       setStatus(
         `You have unsynced local edits here. Use “Force pull (overwrite local)” to replace them with the ${label} copy — a rollback backup is saved first.`,
@@ -162,7 +176,7 @@ export const useSyncProviderActions = ({
         )
         return
       }
-      setStatus(error instanceof Error ? error.message : `${label} pull failed.`)
+      reportSyncFailure('pull', error)
     }
   }
 
@@ -174,7 +188,7 @@ export const useSyncProviderActions = ({
     try {
       await runPull({ force: true, allowUnsafeImport: true })
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : `${label} pull failed.`)
+      reportSyncFailure('pull', error)
     }
   }
 
@@ -194,7 +208,7 @@ export const useSyncProviderActions = ({
       clearRefusals()
       setStatus(result.status === 'clean' ? 'No local changes to push.' : `Uploaded to ${label}.`)
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : `${label} push failed.`)
+      reportSyncFailure('push', error)
     }
   }
 

@@ -1,10 +1,11 @@
 import { getJsonSetting, setJsonSetting } from './settingsRepository'
 
-export const SYNC_PROVIDER_IDS = ['dropbox', 'google-drive'] as const
+export const SYNC_PROVIDER_IDS = ['dropbox', 'google-drive', 'onedrive'] as const
 export type SyncProviderId = (typeof SYNC_PROVIDER_IDS)[number]
 
 export const SYNC_PROVIDER_LABELS: Record<SyncProviderId, string> = {
   dropbox: 'Dropbox',
+  onedrive: 'OneDrive',
   'google-drive': 'Google Drive',
 }
 

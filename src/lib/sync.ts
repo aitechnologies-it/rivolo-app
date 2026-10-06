@@ -1,3 +1,4 @@
+import { oneDriveProvider } from './oneDrive'
 import { dropboxProvider } from './dropbox'
 import { googleDriveProvider } from './googleDrive'
 import { getSyncState, updateSyncState } from './syncState'
@@ -13,15 +14,19 @@ export type SyncStatus = {
   localDirty: boolean
   accountName: string | null
   accountEmail: string | null
+  notebookChannel?: string | null
+  offlineReady?: boolean
 }
 
 export type SyncPullResult = {
   status: 'noop' | 'pulled'
+  deferredDayIds?: string[]
 }
 
 export type SyncPullOptions = {
   force?: boolean
   allowUnsafeImport?: boolean
+  dayIds?: string[]
 }
 
 export type SyncPushResult =
@@ -35,6 +40,7 @@ export type SyncPushResult =
   | {
       status: 'pushed'
       attention?: string
+      localUpdated?: boolean
     }
 
 export type SyncProvider = {
@@ -60,6 +66,7 @@ const EMPTY_STATUS: SyncStatus = {
 
 const providers: Record<SyncProviderId, SyncProvider> = {
   dropbox: dropboxProvider,
+  onedrive: oneDriveProvider,
   'google-drive': googleDriveProvider,
 }
 

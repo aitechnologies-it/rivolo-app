@@ -115,12 +115,12 @@ export const ensureDay = async (dayId: string) => {
   const stored = await getDay(dayId)
   if (stored) {
     await upsertFts(stored.dayId, stored.humanTitle, stored.contentMd)
-    await markSyncLocalDirty()
+    await markSyncLocalDirty([dayId])
     return stored
   }
 
   await upsertFts(dayId, humanTitle, '')
-  await markSyncLocalDirty()
+  await markSyncLocalDirty([dayId])
   return { dayId, humanTitle, contentMd: '', createdAt: now, updatedAt: now }
 }
 
@@ -152,7 +152,7 @@ export const saveDay = async (
 
   await upsertFts(dayId, title, contentMd)
   if (markDirty) {
-    await markSyncLocalDirty()
+    await markSyncLocalDirty([dayId])
   }
   return getDay(dayId)
 }
@@ -189,7 +189,7 @@ export const moveDay = async (fromDayId: string, toDayId: string) => {
     await upsertFts(toDayId, humanTitle, existing.contentMd)
   }
 
-  await markSyncLocalDirty()
+  await markSyncLocalDirty([fromDayId, toDayId])
   return { day: await getDay(toDayId), conflict: false }
 }
 
@@ -234,12 +234,12 @@ export const appendToDay = async (dayId: string, text: string) => {
   })
 }
 
-export const deleteDay = async (dayId: string) => {
+export const deleteDay = async (dayId: string, options: { markDirty?: boolean } = {}) => {
   await run('DELETE FROM days WHERE day_id = ?', [dayId])
   if (await isFtsAvailable()) {
     await run('DELETE FROM days_fts WHERE day_id = ?', [dayId])
   }
-  await markSyncLocalDirty()
+  if (options.markDirty !== false) await markSyncLocalDirty([dayId])
 }
 
 export const clearDays = async () => {
@@ -273,7 +273,7 @@ export const replaceDays = async (days: DayWrite[], options: { markDirty?: boole
     }
 
     if (markDirty) {
-      await markSyncLocalDirty()
+      await markSyncLocalDirty(days.map((day) => day.dayId))
     }
   })
 }
