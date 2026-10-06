@@ -17,7 +17,7 @@ migrations_dir = "migrations"
 GOOGLE_CLIENT_ID = "535138004412-dme8a9sitbamhg00jiln5eang5b7nf8s.apps.googleusercontent.com"
 DROPBOX_CLIENT_ID = "u97wik4j3zxkssp"
 MCP_ALLOWED_ORIGINS = "https://mcp.aitlab.it"
-MCP_OAUTH_ISSUER_URL = "https://aitlab.it/api/mcp/oauth"
+MCP_OAUTH_ISSUER_URL = "https://rivolo.aitlab.it/api/mcp/oauth"
 MCP_RESOURCE_URL = "https://mcp.aitlab.it/mcp"
 
 # Isolated dev Worker; production remains the top-level configuration.

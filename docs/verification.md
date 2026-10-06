@@ -90,3 +90,9 @@ Integrato `origin/main` a `b58e276` nel branch `feat/onedrive-sync`, preservando
 - La build segnala ancora chunk oltre 500 kB e due regole CSS generate senza selettore nel gruppo di utility hover. Non sono errori bloccanti della build; la visualizzazione mobile osservata resta utilizzabile.
 
 Prima della messa online del fork applicare le migrazioni ai database AIT, configurare i segreti e le callback OAuth dei provider, distribuire i relay e il MCP e collegare i domini. Il MCP ospitato conserva il supporto Dropbox/Google Drive; OneDrive usa il MCP locale su esportazione manuale.
+
+### Dominio dedicato e produzione — 6 ottobre 2026
+
+La PR #2 è stata unita in `main` a `2934023`; il deploy Pages di produzione è riuscito dopo la pubblicazione di `rivolo-onedrive-events` e l'applicazione delle quattro migrazioni al D1 di produzione. Il dominio dell'app richiesto è `rivolo.aitlab.it`: il dashboard Pages lo mostra attivo con SSL e una richiesta HTTPS restituisce 200. Allineati origini consentite, issuer OAuth MCP, default e documentazione al sottodominio; le prove OAuth/MCP mirate passano (24 test). La callback Web OneDrive di produzione è `https://rivolo.aitlab.it/auth/onedrive/callback`.
+
+L'endpoint di configurazione OneDrive in produzione restituisce ancora `NOT_CONFIGURED` prima di questa correzione: restano da verificare il client Microsoft e i due segreti Pages Production. Il successo del deploy non attesta un login Microsoft o una sincronizzazione con account reali.

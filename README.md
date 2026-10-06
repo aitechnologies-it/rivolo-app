@@ -62,11 +62,11 @@ Use the production build for service-worker/offline checks; the Vite development
 
 ## Cloud sync setup
 
-This fork targets `https://aitlab.it` in the AIT Cloudflare account. The upstream app remains at [rivolo.app](https://rivolo.app). Configure provider OAuth applications and secrets for this fork before enabling cloud sync; upstream provider registrations may not accept this fork's callback URLs.
+This fork targets `https://rivolo.aitlab.it` in the AIT Cloudflare account. The upstream app remains at [rivolo.app](https://rivolo.app). Configure provider OAuth applications and secrets for this fork before enabling cloud sync; upstream provider registrations may not accept this fork's callback URLs.
 
 The providers use two kinds of values:
 
-- **Public** (client ids, allowed origins) — kept in `wrangler.toml` for `localhost`, `aitlab.it`, and `dev.aitlab.it`. Set your own provider client IDs there.
+- **Public** (client ids, allowed origins) — kept in `wrangler.toml` for `localhost`, `rivolo.aitlab.it`, and `dev.aitlab.it`. Set your own provider client IDs there.
 - **Secret** (client secrets, encryption keys) — never in the repo. Put them in a local `.dev.vars` file for development, and add them as encrypted secrets in the Cloudflare Pages dashboard for production. Start from `.dev.vars.example`. Any long random string works for the encryption keys.
 
 ### Google Drive
@@ -84,7 +84,7 @@ One gotcha: if the Google consent screen stays in Testing mode, sign-ins expire 
 
 ### Dropbox
 
-Create a Dropbox app with `files.content.read` and `files.content.write` access, and add your callback URLs (`https://aitlab.it/auth/dropbox/callback` and the `localhost` equivalent). Dropbox needs no client secret — just one encryption key:
+Create a Dropbox app with `files.content.read` and `files.content.write` access, and add your callback URLs (`https://rivolo.aitlab.it/auth/dropbox/callback` and the `localhost` equivalent). Dropbox needs no client secret — just one encryption key:
 
 ```bash
 DROPBOX_TOKEN_ENCRYPTION_KEY=...
@@ -134,9 +134,11 @@ Implementation references: [Microsoft authorization code flow](https://learn.mic
 
 The fork uses the following resources in Cloudflare account `1ec7ca4fc74c00e7746eeea3a52ea7b5`:
 
+Add `rivolo.aitlab.it` as a custom domain on the `rivolo-app` Pages project. The production OneDrive Web redirect URI is `https://rivolo.aitlab.it/auth/onedrive/callback`; configure the Microsoft client secret and token encryption key as Pages Production secrets.
+
 | Resource | Production | Dev / preview |
 | --- | --- | --- |
-| App origin | `https://aitlab.it` | `https://dev.aitlab.it` |
+| App origin | `https://rivolo.aitlab.it` | `https://dev.aitlab.it` |
 | MCP endpoint | `https://mcp.aitlab.it/mcp` | `https://mcp-dev.aitlab.it/mcp` |
 | MCP Worker / D1 name | `rivolo-mcp` | `rivolo-mcp-dev` |
 | D1 ID | `daf4016f-71ca-41e7-b03b-641785a2f76c` | `3f72928e-d1b2-4596-87f1-ff98b96327e0` |
@@ -273,7 +275,7 @@ Verify these URLs first:
 
 - `https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp` returns protected-resource metadata;
 - an unauthenticated request to `https://mcp.aitlab.it/mcp` returns `401` with a `WWW-Authenticate` discovery challenge;
-- `https://aitlab.it/.well-known/oauth-authorization-server/api/mcp/oauth` returns authorization-server metadata.
+- `https://rivolo.aitlab.it/.well-known/oauth-authorization-server/api/mcp/oauth` returns authorization-server metadata.
 
 Then enable Agent access in Rivolo Settings and test both authentication paths:
 
