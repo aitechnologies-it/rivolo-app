@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import SegmentedControl from '../components/SegmentedControl'
 import AppearanceSection from '../components/settings/AppearanceSection'
+import { appIdentities } from '../lib/appIdentity'
 import DataSection, { type CloudVersionHistory } from '../components/settings/DataSection'
 import LlmSection from '../components/settings/LlmSection'
 import AttentionBanner from '../components/settings/AttentionBanner'
@@ -67,6 +68,8 @@ export default function Settings() {
   const allowWebSearch = useSettingsStore((state) => state.allowWebSearch)
   const aiLanguage = useSettingsStore((state) => state.aiLanguage)
   const themePreference = useSettingsStore((state) => state.themePreference)
+  const appIdentity = useSettingsStore((state) => state.appIdentity)
+  const updateAppIdentity = useSettingsStore((state) => state.updateAppIdentity)
   const wallpaper = useSettingsStore((state) => state.wallpaper)
   const highlightInputMode = useSettingsStore((state) => state.highlightInputMode)
   const autocorrection = useSettingsStore((state) => state.autocorrection)
@@ -573,6 +576,8 @@ export default function Settings() {
         <AppearanceSection
           advanced={showAdvanced}
           themePreference={themePreference}
+          appIdentity={appIdentity}
+          onAppIdentityChange={updateAppIdentity}
           wallpaper={wallpaper}
           highlightInputMode={highlightInputMode}
           autocorrection={autocorrection}
@@ -619,20 +624,20 @@ export default function Settings() {
       </div>
 
       <p className="text-center text-xs text-slate-400">
-        Rivolo v{__APP_VERSION__} •{' '}
+        {appIdentities[appIdentity].name} v{__APP_VERSION__} •{' '}
         <Link to="/privacy" className="underline hover:text-slate-600">
           Privacy Policy
         </Link>{' '}
         •{' '}
         <a
-          href="https://github.com/diegobit/rivolo-app"
+          href={appIdentities[appIdentity].source}
           target="_blank"
           rel="noreferrer"
           className="underline hover:text-slate-600"
         >
           Open source
         </a>{' '}
-        • Made by{' '}
+        • {appIdentity === 'ait' ? 'Original by' : 'Made by'}{' '}
         <a
           href="https://diegobit.com"
           target="_blank"
