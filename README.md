@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo.png" alt="Rivolo" width="180" />
+  <img src="docs/logo.png" alt="Rivolo" width="180" />
 </p>
 
 <p align="center"><em>The no-notes notes app 💧</em></p>
@@ -8,16 +8,23 @@ Rivolo (REE-voh-loh) is the Italian word for "small stream". Every day, you writ
 
 Try it here: [rivolo.app](https://rivolo.app)
 
-Rivolo is a local-first PWA deployed on Cloudflare Pages. Notes, settings, AI requests, and cloud file transfers run in the browser. Same-origin Pages Functions exchange and refresh Google Drive, Dropbox, and OneDrive OAuth credentials. For OneDrive, an authenticated Cloudflare WebSocket relay distributes day-change events and a migration registry stores source/destination identifiers; these services never receive note contents. AI prompts and relevant notes are sent only when you ask, directly to the provider you select: Gemini, Anthropic, OpenAI, or your own OpenAI-compatible endpoint. Dropbox, Google Drive, or OneDrive receives notes only if you enable that sync provider. Custom endpoints must be reachable from the device and allow Rivolo's browser origin, headers, and HTTPS connection; on a phone, `localhost` refers to the phone itself.
+Rivolo is a local-first PWA deployed on Cloudflare Pages. Notes, settings, AI requests, and cloud file transfers normally run in the browser. Same-origin Pages Functions exchange and refresh Google Drive, Dropbox, and OneDrive OAuth credentials. For OneDrive, an authenticated Cloudflare WebSocket relay distributes day-change events and a migration registry stores source/destination identifiers; these services never receive note contents. AI prompts and relevant notes are sent only when you ask, directly to the provider you select: Gemini, Anthropic, OpenAI, or your own OpenAI-compatible endpoint. Dropbox, Google Drive, or OneDrive receives notes only if you enable that sync provider. Custom endpoints must be reachable from the device and allow Rivolo's browser origin, headers, and HTTPS connection; on a phone, `localhost` refers to the phone itself.
+
+Hosted MCP Agent access is optional and changes that boundary: when a user enables it in Settings, Rivolo stores an encrypted provider credential and target metadata in Cloudflare D1. The authenticated MCP Worker then downloads and, for additive tools, uploads that user's configured cloud Markdown file. D1 stores credentials, profiles, tokens, and operation metadata—not the notes themselves.
 
 > [!NOTE]
 > The app was completely developed with coding agents. I use it daily. I wrote about this [here](https://diegobit.com/post/rivolo).
 
 ## MCP
 
-Rivolo includes a local read-only MCP server for querying your exported notes from other AI tools. Build it with `npm run mcp:build`, then point your MCP client at `dist-mcp/mcp/index.js` with `RIVOLO_NOTES_FILE` set to your local Rivolo markdown file.
+Rivolo supports two MCP modes:
 
-The MCP server reads a single-file export, not OneDrive's daily folder. See [MCP setup and tools](mcp/README.md).
+- **Local:** a read-only stdio server that queries a local Rivolo Markdown file. Build it with `npm run mcp:build`, then point your MCP client at `dist-mcp/mcp/index.js` with `RIVOLO_NOTES_FILE` set to the file.
+- **Hosted:** a multi-user Streamable HTTP server at `https://mcp.aitlab.it/mcp`. Each user enables Agent access for their active Dropbox or Google Drive profile in Rivolo Settings. Clients authenticate with Rivolo OAuth or a personal access token created in Settings. Hosted writes are additive: append by default, with optional prepend; they never replace or delete a day.
+
+The hosted server reads only the last cloud-synced state. It exposes the local read tools plus `add_to_day` and `add_to_today`, and uses durable `operation_id` replay protection for writes. See [the MCP guide](mcp/README.md) for tools and local client configuration, and [the OAuth notes](docs/mcp-oauth.md) for the hosted authorization design.
+
+The local MCP server reads a single-file export, not OneDrive's daily folder. Hosted Agent access currently supports Dropbox and Google Drive only. See [MCP setup and tools](mcp/README.md).
 
 ## Run
 
@@ -55,11 +62,11 @@ Use the production build for service-worker/offline checks; the Vite development
 
 ## Cloud sync setup
 
-> Only needed if you run your own copy of Rivolo and want cloud sync. The hosted app at [rivolo.app](https://rivolo.app) already has this configured — nothing to do.
+This fork targets `https://aitlab.it` in the AIT Cloudflare account. The upstream app remains at [rivolo.app](https://rivolo.app). Configure provider OAuth applications and secrets for this fork before enabling cloud sync; upstream provider registrations may not accept this fork's callback URLs.
 
 The providers use two kinds of values:
 
-- **Public** (client ids, allowed origins) — kept in `wrangler.toml`, already committed for `localhost` and `rivolo.app`. Swap in your own ids there.
+- **Public** (client ids, allowed origins) — kept in `wrangler.toml` for `localhost`, `aitlab.it`, and `dev.aitlab.it`. Set your own provider client IDs there.
 - **Secret** (client secrets, encryption keys) — never in the repo. Put them in a local `.dev.vars` file for development, and add them as encrypted secrets in the Cloudflare Pages dashboard for production. Start from `.dev.vars.example`. Any long random string works for the encryption keys.
 
 ### Google Drive
@@ -77,7 +84,7 @@ One gotcha: if the Google consent screen stays in Testing mode, sign-ins expire 
 
 ### Dropbox
 
-Create a Dropbox app with `files.content.read` and `files.content.write` access, and add your callback URLs (`https://rivolo.app/auth/dropbox/callback` and the `localhost` equivalent). Dropbox needs no client secret — just one encryption key:
+Create a Dropbox app with `files.content.read` and `files.content.write` access, and add your callback URLs (`https://aitlab.it/auth/dropbox/callback` and the `localhost` equivalent). Dropbox needs no client secret — just one encryption key:
 
 ```bash
 DROPBOX_TOKEN_ENCRYPTION_KEY=...
@@ -113,11 +120,170 @@ With OneDrive active, each day has an author icon that toggles a fixed-width gut
 
 Existing Markdown file targets migrate automatically before synchronization. The original file and local rollback snapshots are retained. A durable registry maps the canonical source identity to one immutable, dedicated sibling folder, using leases to coordinate devices and per-day checkpoints to resume interruptions. Rivolo automatically creates this folder beside the original Markdown file; manually splitting the file or entering a new folder path is unnecessary. A verified drive owner or an account with an explicit owner permission on the source can establish the destination. In a SharePoint document library, an explicitly identified writer can also create the dedicated sibling folder when Microsoft permits creation and the verified sharing matches the source exactly; site-group ownership is not treated as individual ownership. Rivolo verifies recipient identities, roles and restrictions. Where Graph permits it, existing individual recipients are copied with their existing roles and notifications disabled; no additional recipients are granted access. Existing SharePoint site groups are preserved through inheritance. An existing organization link can be reproduced with its original role; organization links are never a fallback for a source shared only with specific people. Unsupported or unverifiable sharing requires the owner to configure the dedicated folder's sharing and retry. A manually selected folder must be dedicated to the notebook and beside its source; selecting the source's parent still creates a dedicated child folder. Local notes remain usable while migration is blocked. Different local/cloud copies without a baseline require an explicit choice, with both copies backed up. Once verified, target settings and daily baselines change atomically; later devices use the registry and transport their local edits without resurrecting unchanged legacy days deleted from the new folder.
 
-The migration registry stores source/destination identifiers, status, generation and lease metadata; Cloudflare never receives note contents. The retained monolithic file is a recovery copy and stops receiving updates after migration. Update or restart old clients during the transition: an already-open old client can still write to that old file. Disconnecting clears Rivolo's credential cookie; revoke the Microsoft app grant in account settings to remove consent.
+The migration registry stores source/destination identifiers, status, generation and lease metadata; the OneDrive relay and migration registry never receive note contents. The retained monolithic file is a recovery copy and stops receiving updates after migration. Update or restart old clients during the transition: an already-open old client can still write to that old file. Disconnecting clears Rivolo's credential cookie; revoke the Microsoft app grant in account settings to remove consent.
 
 Deploy the Worker before the updated Pages app. Run `npm run test:events-runtime` to verify room isolation, per-file deduplication and migration leases in the local Cloudflare runtime. See [Pages Durable Object bindings](https://developers.cloudflare.com/pages/functions/bindings/#durable-objects), [multi-worker local development](https://developers.cloudflare.com/workers/local-development/multi-workers/) and [WebSocket hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/).
 
 Implementation references: [Microsoft authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow), [shared files](https://learn.microsoft.com/en-us/graph/api/shares-get?view=graph-rest-1.0), [conditional upload sessions](https://learn.microsoft.com/en-us/graph/api/driveitem-createuploadsession?view=graph-rest-1.0), and [browser downloads](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0).
+
+## Hosted MCP deployment
+
+> Only needed when self-hosting the online, multi-user MCP server. The Pages app and MCP Worker must use the same D1 database and the same `MCP_PROVIDER_TOKEN_ENCRYPTION_KEY`.
+
+### Dev / preview environment
+
+The fork uses the following resources in Cloudflare account `1ec7ca4fc74c00e7746eeea3a52ea7b5`:
+
+| Resource | Production | Dev / preview |
+| --- | --- | --- |
+| App origin | `https://aitlab.it` | `https://dev.aitlab.it` |
+| MCP endpoint | `https://mcp.aitlab.it/mcp` | `https://mcp-dev.aitlab.it/mcp` |
+| MCP Worker / D1 name | `rivolo-mcp` | `rivolo-mcp-dev` |
+| D1 ID | `daf4016f-71ca-41e7-b03b-641785a2f76c` | `3f72928e-d1b2-4596-87f1-ff98b96327e0` |
+| OneDrive event Worker | `rivolo-onedrive-events` | `rivolo-onedrive-events-dev` |
+
+The two empty D1 databases were created in AIT on October 6, 2026. Apply the migrations and configure secrets before deploying the MCP services. Deploy the OneDrive event Worker in each environment before deploying Pages with its corresponding binding; use `npx wrangler deploy --config workers/onedrive-events/wrangler.toml --env dev` for the preview relay. Configuring these names does not deploy Workers or attach custom domains.
+
+The MCP branch preview uses `https://mcp-dev.aitlab.it/mcp` and the separate
+`rivolo-mcp-dev` D1 database. Pages selects `[env.preview]`; Worker commands
+must include `--env dev`. Production keeps its own database and secrets.
+
+```bash
+npx wrangler d1 migrations apply MCP_DB --remote --config wrangler.mcp.toml --env dev
+npx wrangler deploy --config wrangler.mcp.toml --env dev
+```
+
+Set preview secrets in the Pages project's Preview environment. The Worker
+needs `MCP_PROVIDER_TOKEN_ENCRYPTION_KEY` (identical to Pages Preview) and
+`GOOGLE_CLIENT_SECRET`. Pages Preview also needs
+`MCP_PROFILE_SESSION_ENCRYPTION_KEY`, `GOOGLE_TOKEN_ENCRYPTION_KEY`, and
+`DROPBOX_TOKEN_ENCRYPTION_KEY`. Use separate encryption keys from production.
+
+The dev OAuth issuer is:
+`https://dev.aitlab.it/api/mcp/oauth`.
+Complete provider login and Agent access setup on that same hostname.
+Provider OAuth settings must allow the chosen app origin and callback URLs. Branch preview origins must be explicitly added to the allowed origins and registered with the provider before using OAuth on those previews.
+
+`VITE_MCP_ENDPOINT` selects the endpoint displayed in Settings at build time.
+Pages Preview uses the dev endpoint; Production uses the production endpoint.
+The Worker is deployed separately from Pages; pushing a branch does not
+redeploy it. Use a test notes file: a separate D1 database does not isolate a
+Dropbox/Google file that you deliberately select in both environments.
+
+The remaining instructions below describe production provisioning. Do not
+replace the dev database binding or copy production secrets into Preview.
+
+### 1. Verify and build
+
+```bash
+npx wrangler whoami
+npm test
+npm run lint
+npm run build
+npm run mcp:build
+npm run mcp:worker:build
+```
+
+### 2. Create and configure D1
+
+Create the database:
+
+```bash
+npx wrangler d1 create rivolo-mcp
+```
+
+Copy the returned `database_id` into all three D1 binding blocks:
+
+- the top-level `MCP_DB` binding in `wrangler.toml`;
+- the production `MCP_DB` binding in `wrangler.toml`;
+- the `MCP_DB` binding in `wrangler.mcp.toml`.
+
+These three production/default entries must contain the same production database ID. Keep `[env.preview]` and `[env.dev]` bound to the separate dev database. Do not deploy while the placeholder `00000000-0000-0000-0000-000000000000` remains.
+
+### 3. Apply and verify migrations
+
+List the pending migrations, apply them remotely, then confirm that none remain:
+
+```bash
+npx wrangler d1 migrations list MCP_DB --remote --config wrangler.mcp.toml
+npx wrangler d1 migrations apply MCP_DB --remote --config wrangler.mcp.toml
+npx wrangler d1 migrations list MCP_DB --remote --config wrangler.mcp.toml
+```
+
+The initial deployment applies `migrations/0001` through `0004`. Wrangler asks for confirmation and captures a backup before applying migrations. Verify the resulting schema and foreign keys:
+
+```bash
+npx wrangler d1 execute MCP_DB --remote --config wrangler.mcp.toml --command "SELECT name, type FROM sqlite_master WHERE name LIKE 'mcp_%' ORDER BY type, name;"
+npx wrangler d1 execute MCP_DB --remote --config wrangler.mcp.toml --command "PRAGMA foreign_key_check;"
+```
+
+`PRAGMA foreign_key_check` should return no rows. For future releases, commit a new numbered migration and run the same `list` → `apply` → `list` sequence before deploying code that depends on it. Never edit a migration that has already been applied in production.
+
+### 4. Configure secrets
+
+Generate two different high-entropy values and save them in a password manager. `MCP_PROVIDER_TOKEN_ENCRYPTION_KEY` must be identical on Pages and the Worker; `MCP_PROFILE_SESSION_ENCRYPTION_KEY` belongs only to Pages.
+
+```bash
+openssl rand -base64 48
+openssl rand -base64 48
+npx wrangler pages secret put MCP_PROVIDER_TOKEN_ENCRYPTION_KEY --project-name rivolo-app
+npx wrangler pages secret put MCP_PROFILE_SESSION_ENCRYPTION_KEY --project-name rivolo-app
+```
+
+The two `secret put` commands prompt for the values. Paste the first generated value for `MCP_PROVIDER_TOKEN_ENCRYPTION_KEY` and the second for `MCP_PROFILE_SESSION_ENCRYPTION_KEY`.
+
+Deploy the Worker once, without attaching its public custom domain yet, and then set its secrets:
+
+```bash
+npx wrangler deploy --config wrangler.mcp.toml
+npx wrangler secret put MCP_PROVIDER_TOKEN_ENCRYPTION_KEY --config wrangler.mcp.toml
+npx wrangler secret put GOOGLE_CLIENT_SECRET --config wrangler.mcp.toml
+```
+
+Paste the same first generated value when the Worker prompts for `MCP_PROVIDER_TOKEN_ENCRYPTION_KEY`. The last command prompts for the existing Google OAuth client secret. Cloudflare does not reveal existing secret values, so keep the source value in a password manager or local untracked `.dev.vars` file. Dropbox does not require a client secret.
+
+### 5. Protect the OAuth endpoints
+
+Before public rollout, configure Cloudflare WAF or rate-limiting rules for:
+
+- `/api/mcp/oauth/register`—the strictest rule, because successful requests create D1 rows;
+- `/api/mcp/oauth/token`—protect against credential guessing and refresh-token abuse;
+- `/api/mcp/oauth/authorize`—limit automated consent/request abuse.
+
+Also arrange periodic deletion of expired authorization codes and old revoked token families. Application validation remains required; edge rules are an additional abuse boundary.
+
+### 6. Route and deploy
+
+Attach `mcp.aitlab.it` as a custom domain for the `rivolo-mcp` Worker. Keep `MCP_ALLOWED_ORIGINS` restricted to trusted browser origins; native MCP clients normally omit the `Origin` header.
+
+This repository uses Git-integrated Pages deployments: `dev` creates a preview and `main` deploys production. Push and verify `dev` first, then promote the same commit to `main`.
+
+```bash
+git push origin dev
+# Verify the Cloudflare Pages preview build and Worker discovery/auth behavior.
+git switch main
+git merge --ff-only dev
+git push origin main
+git switch dev
+```
+
+### 7. Smoke-test production
+
+Verify these URLs first:
+
+- `https://mcp.aitlab.it/.well-known/oauth-protected-resource/mcp` returns protected-resource metadata;
+- an unauthenticated request to `https://mcp.aitlab.it/mcp` returns `401` with a `WWW-Authenticate` discovery challenge;
+- `https://aitlab.it/.well-known/oauth-authorization-server/api/mcp/oauth` returns authorization-server metadata.
+
+Then enable Agent access in Rivolo Settings and test both authentication paths:
+
+1. create a personal token and connect a client with `Authorization: Bearer rvl_...`;
+2. connect an OAuth-capable client and complete the Rivolo consent screen;
+3. run a representative read, append, prepend, and repeated `operation_id` call;
+4. verify the app sees the cloud edit when it returns to the foreground;
+5. repeat with disposable Dropbox and Google Drive accounts before broad rollout.
+
+Do not log bearer tokens, OAuth codes, provider refresh tokens, or note contents. Revoking Agent access destroys the stored provider credential and revokes its personal tokens and OAuth grants.
 
 ## Debugging
 

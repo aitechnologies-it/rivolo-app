@@ -76,3 +76,15 @@ I quattro passaggi Agentic QA sono disponibili localmente:
 - [Verifiche ancora inconclusive](../tests/agentic-qa-tests/runs/20261002-120014/inconclusive-findings/REPORT.md).
 
 Gli esiti successivi alla correzione sono in `final-tests.log`, `probes-after-fix.log` e nel presente riepilogo. I report iniziali restano evidenze storiche: il loro giudizio di rischio precede la correzione. Le prove su account reali, iOS e la race nel cambio provider indicata come inconclusiva non sono state sostituite da affermazioni basate sui mock.
+
+### Integrazione con main e configurazione del fork — 6 ottobre 2026
+
+Integrato `origin/main` a `b58e276` nel branch `feat/onedrive-sync`, preservando OneDrive giornaliero e i 36 commit upstream, inclusi MCP ospitato, accesso agenti, copia dei messaggi, aggiornamenti mobile e logo SVG. Risolti i conflitti in README, SyncSection, Settings e configurazione Cloudflare.
+
+- Suite finale: **77 file / 666 test superati**; lint e build app/Functions/Worker, MCP locale e dry-run MCP ospitato superati. Runtime locale OneDrive superato.
+- Tre nuove regressioni verificano l'indipendenza dei controlli OneDrive dal MCP ospitato, il passaggio a OneDrive con Agent access attivo e l'origine MCP configurata senza fiducia implicita nell'origine upstream.
+- Controllo visivo in Zen, finestra privata, con build locale: pannello OneDrive a 320, 375 e 1280 pixel, senza overflow osservato. Nessuna autenticazione provider o modifica delle note dell'utente; questa prova non equivale a iOS Safari/PWA installata.
+- Configurati domini `aitlab.it`, `mcp.aitlab.it`, `dev.aitlab.it` e `mcp-dev.aitlab.it` e risorse dell'account Cloudflare AIT. Creati due database D1 vuoti, produzione e dev, con ID riportati nel README; nessuna migrazione remota o pubblicazione dei Worker eseguita in questa verifica. I relay OneDrive di produzione e preview hanno nomi distinti.
+- La build segnala ancora chunk oltre 500 kB e due regole CSS generate senza selettore nel gruppo di utility hover. Non sono errori bloccanti della build; la visualizzazione mobile osservata resta utilizzabile.
+
+Prima della messa online del fork applicare le migrazioni ai database AIT, configurare i segreti e le callback OAuth dei provider, distribuire i relay e il MCP e collegare i domini. Il MCP ospitato conserva il supporto Dropbox/Google Drive; OneDrive usa il MCP locale su esportazione manuale.
