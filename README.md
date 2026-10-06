@@ -186,7 +186,7 @@ npm run mcp:worker:build
 
 ### 2. Create and configure D1
 
-Create the database:
+The AIT databases in the table above already exist; keep their configured IDs and proceed to migrations. For a new account installation, create the database:
 
 ```bash
 npx wrangler d1 create rivolo-mcp
