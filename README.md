@@ -17,6 +17,8 @@ Rivolo is a local-first PWA deployed on Cloudflare Pages. Notes, settings, AI re
 
 Rivolo includes a local read-only MCP server for querying your exported notes from other AI tools. Build it with `npm run mcp:build`, then point your MCP client at `dist-mcp/mcp/index.js` with `RIVOLO_NOTES_FILE` set to your local Rivolo markdown file.
 
+The MCP server reads a single-file export, not OneDrive's daily folder. See [MCP setup and tools](mcp/README.md).
+
 ## Run
 
 ```bash
@@ -36,6 +38,20 @@ npm run dev:cloud
 npm run build
 npm run preview
 ```
+
+## Project checks
+
+```bash
+npm test -- --maxWorkers=2
+npm run lint
+npm run build
+npm run mcp:build
+npm run test:events-runtime
+```
+
+Two Vitest workers avoid CPU contention in the 10,000-day import/rollback test. The production build checks the app, Pages Functions and event Worker with TypeScript; the MCP server has its own build. The event runtime check runs Pages and the Worker locally with synthetic credentials, without contacting Microsoft.
+
+Use the production build for service-worker/offline checks; the Vite development server does not exercise the installed PWA. Automated provider fixtures do not replace tests with real shared Microsoft accounts or an installed iOS PWA. See the [verification checklist](docs/verification.md) and the [OneDrive implementation plan and rollout checks](docs/plans/2026-10-01-onedrive-daily-sync.md).
 
 ## Cloud sync setup
 
