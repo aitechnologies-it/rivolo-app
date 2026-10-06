@@ -1104,9 +1104,17 @@ body[data-keyboard-open='true'][data-day-editor-focus='true'] .bottom-tray-blur-
   scroll-margin-top: 80px;
 }
 
-/* Recolor only monochrome black icon SVGs; keep colored brand assets (the logo) untouched. */
-html[data-theme='dark'] img[src$='.svg']:not(.icon-on-accent):not([src$='logo.svg']) {
+/* Recolor monochrome icons; preserve colored brand assets. */
+html[data-theme='dark'] img[src$='.svg']:not(.icon-on-accent):not([src$='logo.svg']):not(.ait-brain) {
   filter: var(--theme-icon-filter);
+}
+
+html[data-theme='dark'] .ait-brain {
+  filter: brightness(1.55);
+}
+
+body[data-empty-state='true'] .app-logo-link .ait-signature {
+  opacity: 0;
 }
 
 html[data-theme='dark'] .bg-white,

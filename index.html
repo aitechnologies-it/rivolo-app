@@ -4,8 +4,12 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="apple-mobile-web-app-title" content="Rivolo" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual" />
     <meta name="theme-color" content="#ffffff" />
+    <title>Rivolo</title>
+    <!-- app-identity-bootstrap -->
     <script>
       (() => {
         const storageKey = 'rivolo.appearance.theme'
@@ -36,7 +40,6 @@
         document.querySelector("meta[name='theme-color']")?.setAttribute('content', themeColor)
       })()
     </script>
-    <title>Rivolo</title>
   </head>
   <body>
     <div id="root"></div>
