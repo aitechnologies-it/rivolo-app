@@ -82,6 +82,7 @@ Gli esiti successivi alla correzione sono in `final-tests.log`, `probes-after-fi
 Integrato `origin/main` a `b58e276` nel branch `feat/onedrive-sync`, preservando OneDrive giornaliero e i 36 commit upstream, inclusi MCP ospitato, accesso agenti, copia dei messaggi, aggiornamenti mobile e logo SVG. Risolti i conflitti in README, SyncSection, Settings e configurazione Cloudflare.
 
 - Suite finale: **77 file / 666 test superati**; lint e build app/Functions/Worker, MCP locale e dry-run MCP ospitato superati. Runtime locale OneDrive superato.
+- Compilazione del bundle Pages Functions con Wrangler superata. Il primo check remoto ha rifiutato `account_id` nel file Pages; rimosso da `wrangler.toml`, conservandolo solo nei file dei Worker dove è supportato.
 - Tre nuove regressioni verificano l'indipendenza dei controlli OneDrive dal MCP ospitato, il passaggio a OneDrive con Agent access attivo e l'origine MCP configurata senza fiducia implicita nell'origine upstream.
 - Controllo visivo in Zen, finestra privata, con build locale: pannello OneDrive a 320, 375 e 1280 pixel, senza overflow osservato. Nessuna autenticazione provider o modifica delle note dell'utente; questa prova non equivale a iOS Safari/PWA installata.
 - Configurati domini `aitlab.it`, `mcp.aitlab.it`, `dev.aitlab.it` e `mcp-dev.aitlab.it` e risorse dell'account Cloudflare AIT. Creati due database D1 vuoti, produzione e dev, con ID riportati nel README; nessuna migrazione remota o pubblicazione dei Worker eseguita in questa verifica. I relay OneDrive di produzione e preview hanno nomi distinti.

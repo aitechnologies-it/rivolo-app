@@ -1,5 +1,4 @@
 name = "rivolo-app"
-account_id = "1ec7ca4fc74c00e7746eeea3a52ea7b5"
 pages_build_output_dir = "./dist"
 compatibility_date = "2026-06-21"
 
