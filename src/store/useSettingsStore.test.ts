@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useSettingsStore } from './useSettingsStore'
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../lib/llm/types'
 import { THEME_STORAGE_KEY } from '../lib/theme'
+import { APP_IDENTITY_STORAGE_KEY } from '../lib/appIdentity'
 
 const settingsRepository = vi.hoisted(() => ({
   getSetting: vi.fn(),
@@ -39,6 +40,28 @@ const mockLoadSettingsValues = (
     Promise.resolve(jsonValues[key] ?? null),
   )
 }
+
+describe('useSettingsStore app identity', () => {
+  it('keeps branding local without changing notebook settings', () => {
+    settingsRepository.setSetting.mockClear()
+    settingsRepository.setJsonSetting.mockClear()
+    useSettingsStore.setState({ appIdentity: 'rivolo', themePreference: 'dark', settingsView: 'advanced' })
+
+    useSettingsStore.getState().updateAppIdentity('ait')
+
+    expect(useSettingsStore.getState()).toMatchObject({
+      appIdentity: 'ait', themePreference: 'dark', settingsView: 'advanced',
+    })
+    expect(window.localStorage.getItem(APP_IDENTITY_STORAGE_KEY)).toBe('ait')
+    expect(document.title).toBe('Rivolo x AIT')
+    expect(settingsRepository.setSetting).not.toHaveBeenCalled()
+    expect(settingsRepository.setJsonSetting).not.toHaveBeenCalled()
+
+    useSettingsStore.getState().updateAppIdentity('rivolo')
+    expect(document.title).toBe('Rivolo')
+    expect(window.localStorage.getItem(APP_IDENTITY_STORAGE_KEY)).toBe('rivolo')
+  })
+})
 
 describe('useSettingsStore setup notice dismissal', () => {
   beforeEach(() => {

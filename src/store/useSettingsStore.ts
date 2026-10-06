@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getInitialAppIdentity, syncAppIdentity, type AppIdentity } from '../lib/appIdentity'
 import {
   getFontPresetSettings,
   type BodyFont,
@@ -51,6 +52,7 @@ type SettingsState = {
   dismissedSetupNotices: DismissedSetupNotices
   settingsView: SettingsView
   themePreference: ThemePreference
+  appIdentity: AppIdentity
   wallpaper: Wallpaper
   highlightInputMode: boolean
   autocorrection: boolean
@@ -70,6 +72,7 @@ type SettingsState = {
   updateAiLanguage: (language: AiLanguage) => Promise<void>
   updateSettingsView: (settingsView: SettingsView) => Promise<void>
   updateThemePreference: (themePreference: ThemePreference) => Promise<void>
+  updateAppIdentity: (identity: AppIdentity) => void
   updateWallpaper: (wallpaper: Wallpaper) => Promise<void>
   updateHighlightInputMode: (enabled: boolean) => Promise<void>
   updateAutocorrection: (enabled: boolean) => Promise<void>
@@ -190,6 +193,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   dismissedSetupNotices: DEFAULT_DISMISSED_SETUP_NOTICES,
   settingsView: 'basic',
   themePreference: getLocalThemePreference() ?? 'system',
+  appIdentity: getInitialAppIdentity(),
   wallpaper: 'thoughts-light',
   highlightInputMode: false,
   autocorrection: true,
@@ -197,6 +201,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   bodyFont: 'system',
   monospaceFont: 'iawriter',
   titleFont: 'handlee',
+
+  updateAppIdentity: (appIdentity) => {
+    syncAppIdentity(appIdentity)
+    set({ appIdentity })
+  },
 
   loadSettings: async () => {
     set({ loading: true, settingsError: null })
