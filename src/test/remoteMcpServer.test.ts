@@ -581,7 +581,7 @@ describe('hosted MCP Worker discovery', () => {
     expect(response.headers.get('Cache-Control')).toBe('no-store')
     await expect(response.json()).resolves.toEqual({
       resource: 'https://mcp.aitlab.it/mcp',
-      authorization_servers: ['https://aitlab.it/api/mcp/oauth'],
+      authorization_servers: ['https://rivolo.aitlab.it/api/mcp/oauth'],
       scopes_supported: ['notes:read', 'notes:write'],
       bearer_methods_supported: ['header'],
       resource_name: 'Rivolo notes',

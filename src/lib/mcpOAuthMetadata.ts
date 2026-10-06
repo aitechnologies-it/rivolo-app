@@ -1,6 +1,6 @@
 export const MCP_OAUTH_SCOPES = ['notes:read', 'notes:write'] as const
 export const DEFAULT_MCP_RESOURCE_URL = 'https://mcp.aitlab.it/mcp'
-export const DEFAULT_MCP_OAUTH_ISSUER_URL = 'https://aitlab.it/api/mcp/oauth'
+export const DEFAULT_MCP_OAUTH_ISSUER_URL = 'https://rivolo.aitlab.it/api/mcp/oauth'
 
 export type McpOAuthMetadataConfig = {
   resourceUrl?: string

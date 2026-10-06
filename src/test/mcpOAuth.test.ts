@@ -76,7 +76,7 @@ const createEnv = (db: SqliteD1): McpOAuthEnv => ({
   MCP_DB: db as unknown as D1Database,
   MCP_PROVIDER_TOKEN_ENCRYPTION_KEY: 'profile-token-secret',
   MCP_PROFILE_SESSION_ENCRYPTION_KEY: 'profile-session-secret',
-  MCP_ALLOWED_ORIGINS: 'https://aitlab.it',
+  MCP_ALLOWED_ORIGINS: 'https://rivolo.aitlab.it',
 })
 
 const createProfile = async (env: McpOAuthEnv) =>
@@ -191,7 +191,7 @@ const completeConsent = async (
         ['decision', 'allow'],
       ]),
       {
-        Origin: 'https://aitlab.it',
+        Origin: 'https://rivolo.aitlab.it',
         Cookie: cookie,
       },
     ),
@@ -662,7 +662,7 @@ describe('MCP OAuth authorization and tokens', () => {
           ['profile_id', '22222222-2222-4222-8222-222222222222'],
           ['decision', 'allow'],
         ]),
-        { Origin: 'https://aitlab.it', Cookie: cookie },
+        { Origin: 'https://rivolo.aitlab.it', Cookie: cookie },
       ),
       env,
     )
