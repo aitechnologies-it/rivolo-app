@@ -33,6 +33,7 @@ import {
 } from './writeTools.js'
 import {
   createMcpBearerChallenge,
+  DEFAULT_MCP_RESOURCE_URL,
   type McpOAuthMetadataConfig,
 } from '../src/lib/mcpOAuthMetadata.js'
 
@@ -151,7 +152,7 @@ const validateOrigin = (request: Request, env: RemoteMcpEnv) => {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean)
-  return new Set(['https://mcp.rivolo.app', ...configured]).has(origin)
+  return new Set([new URL(env.MCP_RESOURCE_URL || DEFAULT_MCP_RESOURCE_URL).origin, ...configured]).has(origin)
 }
 
 const hasScope = (

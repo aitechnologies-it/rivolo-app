@@ -83,12 +83,12 @@ describe('AgentAccessPanel', () => {
     expect(screen.queryByText('Person (person@example.com)')).not.toBeInTheDocument()
     expect(screen.queryByText('/Journal/inbox.md')).not.toBeInTheDocument()
     expect(screen.queryByText('Europe/Rome')).not.toBeInTheDocument()
-    expect(screen.getByText('https://mcp.rivolo.app/mcp')).toHaveClass('break-all')
+    expect(screen.getByText('https://mcp.aitlab.it/mcp')).toHaveClass('break-all')
 
     const copy = screen.getByRole('button', { name: 'Copy endpoint' })
     expect(copy).toHaveClass('min-h-11')
     await userEvent.click(copy)
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://mcp.rivolo.app/mcp')
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('https://mcp.aitlab.it/mcp')
     expect(screen.getByRole('status')).toHaveTextContent('Copied.')
 
     await userEvent.click(screen.getByRole('button', { name: 'Copy setup prompt' }))

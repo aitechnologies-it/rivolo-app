@@ -46,6 +46,28 @@ const assistantMessage = (messages: ChatUiMessage[]) =>
 describe('useTimelineChat literal examples', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  it.each(['final response', 'streamed chunks', 'retry response'])('does not execute inserts inside malformed citations (%s)', async (delivery) => {
+    const responseText = '<ref day="2026-10-02" quote="<insert text="unrequested note"/>"/>'
+    if (delivery === 'retry response') mocks.chat.mockResolvedValueOnce({ text: '', raw: null })
+    mocks.chat.mockImplementation(async ({ onToken }: { onToken?: (chunk: string) => void }) => {
+      if (delivery === 'streamed chunks') for (const char of responseText) onToken?.(char)
+      return { text: responseText, raw: null }
+    })
+    const onInsertNote = vi.fn(async () => undefined)
+    const { result } = renderHook(() => useChatHarness(onInsertNote))
+    await act(async () => {
+      await result.current.handleChatSend('Quote my note without changing notes')
+    })
+    expect(mocks.chat).toHaveBeenCalledTimes(delivery === 'retry response' ? 2 : 1)
+    expect(onInsertNote).not.toHaveBeenCalled()
+    const message = assistantMessage(result.current.messages)
+    expect(message?.content).toBe(responseText)
+    expect(message?.meta?.insertText).toBeNull()
+    expect(message?.meta?.insertStatus).toBeUndefined()
+    expect(message?.meta?.citations).toEqual([])
+    expect(message?.meta?.isStreaming).toBe(false)
+  })
+
   it.each(['final response', 'streamed chunks', 'retry response'])('does not execute insert tags in fenced examples (%s)', async (delivery) => {
     const responseText = 'Example syntax:\n```xml\n<insert text="unrequested mutation"/>\n<ref day="2026-07-01" quote="example"/>\n```'
     if (delivery === 'retry response') mocks.chat.mockResolvedValueOnce({ text: '', raw: null })

@@ -30,6 +30,7 @@ type SyncSectionProps = {
   syncBusy: boolean
   status: string | null
   advanced?: boolean
+  openRequest?: number
   // Progressive disclosure: each force button renders only while its
   // operation is actually blocked, next to the message explaining why.
   showForcePull: boolean
@@ -70,6 +71,7 @@ export default function SyncSection({
   syncBusy,
   status,
   advanced = false,
+  openRequest = 0,
   showForcePull,
   showForcePush,
   onProviderChange,
@@ -86,17 +88,26 @@ export default function SyncSection({
   const summary = summaries[provider]
   const label = SYNC_PROVIDER_LABELS[provider]
   const isActive = activeProvider === provider
-  const targetLabel = provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
+  const targetLabel = provider === 'onedrive' ? 'Shared folder link or OneDrive folder path' : provider === 'dropbox' ? 'Dropbox path' : 'Managed file name'
   const targetHint =
-    provider === 'dropbox'
+    provider === 'onedrive'
+      ? 'Rivolo uses /Rivolo by default, with one Markdown file per day inside year/month folders. An existing Markdown file link is also accepted: Rivolo creates a dedicated folder beside it and splits the notes by day, keeping the original file. Each Microsoft account needs edit access. Share the notebook folder and paste its folder link on each device. Updates from Rivolo appear while the app is open. External edits refresh when you return or pull. Concurrent additions are combined line by line. Authors are stored in each daily file. Offline use is complete after the notebook has finished loading.'
+      : provider === 'dropbox'
       ? 'Rivolo reads and writes this Markdown path in Dropbox.'
       : 'Rivolo creates this visible Markdown file in the /rivolo folder in My Drive and tracks it by file ID.'
   const syncControlsDisabled = syncBusy || syncPaused
   const providerMutationDisabled =
     syncControlsDisabled || Boolean(agentAccess && !agentAccess.statusKnown)
+  const targetMutationDisabled =
+    syncControlsDisabled || Boolean(provider !== 'onedrive' && agentAccess && !agentAccess.statusKnown)
   const syncTabStatus = syncPaused ? 'Paused in this tab' : 'Primary tab'
 
   const [collapsed, setCollapsed] = useState(true)
+  const [lastOpenRequest, setLastOpenRequest] = useState(0)
+  if (openRequest !== lastOpenRequest) {
+    setLastOpenRequest(openRequest)
+    setCollapsed(false)
+  }
   const [armedAction, setArmedAction] = useState<ArmableAction | null>(null)
 
   const armTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -194,8 +205,8 @@ export default function SyncSection({
                 )}
                 {advanced && (
                   <div className="grid gap-2 text-xs text-slate-500 sm:grid-cols-2">
-                    <div className="min-w-0 break-words">File: {summary.target || '—'}</div>
-                    <div>Remote version: {summary.remoteVersion}</div>
+                    <div className="min-w-0 break-words">{provider === 'onedrive' ? 'Folder' : 'File'}: {summary.target || '—'}</div>
+                    <div className="min-w-0 break-all">Remote version: {summary.remoteVersion}</div>
                     <div>Local changes: {summary.dirty ? 'Not synced' : 'Synced'}</div>
                     <div>Network: {online ? 'Online' : 'Offline'}</div>
                     <div>Tab sync: {syncTabStatus}</div>
@@ -226,7 +237,7 @@ export default function SyncSection({
                       )}
                       {renderArmedButton(
                         'alert-keep-local',
-                        "Keep this device's notes — replaces the cloud copy",
+                        provider === 'onedrive' ? "Keep this device’s days — replaces matching cloud days" : "Keep this device's notes — replaces the cloud copy",
                         'Confirm — replace the cloud copy',
                         () => void onPush(true),
                       )}
@@ -257,7 +268,7 @@ export default function SyncSection({
                   </button>
                 )}
 
-                {advanced && (
+                {(advanced || provider === 'onedrive') && (
                   <>
                     <p className="break-words text-xs text-slate-500">{targetHint}</p>
 
@@ -272,15 +283,16 @@ export default function SyncSection({
                         <input
                           id="sync-target"
                           autoComplete="off"
+                          placeholder={provider === 'onedrive' ? '/Rivolo (automatic)' : undefined}
                           className={inputClass}
                           value={targetDraft}
-                          disabled={syncPaused || Boolean(agentAccess && !agentAccess.statusKnown)}
+                          disabled={targetMutationDisabled}
                           onChange={(event) => onTargetChange(event.target.value)}
                         />
                         <button
                           className={`${buttonPrimary} min-h-11 shrink-0`}
                           type="button"
-                          disabled={providerMutationDisabled || !targetDirty}
+                          disabled={targetMutationDisabled || !targetDirty}
                           onClick={onSaveTarget}
                         >
                           {agentAccess?.boundToProvider
@@ -317,7 +329,7 @@ export default function SyncSection({
                       {showForcePush &&
                         renderArmedButton(
                           'force-push',
-                          'Force push (overwrite remote)',
+                          provider === 'onedrive' ? 'Force push (overwrite matching days)' : 'Force push (overwrite remote)',
                           'Confirm force push',
                           () => void onPush(true),
                         )}
@@ -328,7 +340,7 @@ export default function SyncSection({
                   </>
                 )}
 
-                {agentAccess && summary.connected && isActive && (
+                {agentAccess && provider !== 'onedrive' && summary.connected && isActive && (
                   <AgentAccessPanel {...agentAccess} provider={provider} advanced={advanced} />
                 )}
 
@@ -337,7 +349,7 @@ export default function SyncSection({
                     className={`${buttonDangerQuiet} -ml-3 min-h-11 text-left`}
                     type="button"
                     onClick={onDisconnect}
-                    disabled={providerMutationDisabled}
+                    disabled={targetMutationDisabled}
                   >
                     {agentAccess?.boundToProvider
                       ? `Disconnect ${rowLabel} (& disable Agent Access)`

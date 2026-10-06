@@ -206,6 +206,7 @@ const toResult = (pieces: StreamTagPiece[]): StreamTagParseResult => {
 
 export const createStreamTagParser = () => {
   let pendingTag: string | null = null
+  let literalTagDepth = 0
   let fenceLength = 0
   let inlineLength = 0
   let backtickRun = 0
@@ -263,6 +264,16 @@ export const createStreamTagParser = () => {
       const atLineStart = lineIsWhitespace
       lineIsWhitespace = char === '\n' || (lineIsWhitespace && /\s/.test(char))
 
+      // Invalid markup stays literal until its enclosing brackets close. Keep
+      // only the depth so oversized or unfinished tags cannot grow the buffer
+      // or expose nested actions when a stream chunk ends.
+      if (literalTagDepth > 0) {
+        appendText(char)
+        if (char === '<') literalTagDepth += 1
+        else if (char === '>') literalTagDepth -= 1
+        continue
+      }
+
       if (pendingTag === null) {
         if (char === '`') {
           if (!backtickRun) runAtLineStart = atLineStart
@@ -290,8 +301,9 @@ export const createStreamTagParser = () => {
       }
 
       if (char === '<' && pendingTag.length > 1) {
-        appendText(pendingTag)
-        pendingTag = '<'
+        appendText(pendingTag + char)
+        pendingTag = null
+        literalTagDepth = 2
         continue
       }
 
@@ -306,12 +318,14 @@ export const createStreamTagParser = () => {
       if (char === '\n' || char === '\r') {
         appendText(pendingTag)
         pendingTag = null
+        literalTagDepth = 1
         continue
       }
 
       if (pendingTag.length > MAX_TAG_LENGTH) {
         appendText(pendingTag)
         pendingTag = null
+        literalTagDepth = char === '>' ? 0 : 1
         continue
       }
 

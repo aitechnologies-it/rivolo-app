@@ -1,5 +1,6 @@
 import { formatDayTitle, isValidDayId } from './dates.js'
 import type { Day } from './notesCore.js'
+import { isAuthorsMetadataLine, notebookText } from './notebookMetadata.js'
 
 export type ParsedDay = {
   dayId: string
@@ -24,7 +25,7 @@ const encodeContent = (content: string) =>
   content
     .split('\n')
     .map((line) =>
-      line.startsWith(CONTENT_ESCAPE_PREFIX) || DAY_MARKER_LINE.test(line)
+      line.startsWith(CONTENT_ESCAPE_PREFIX) || DAY_MARKER_LINE.test(line) || isAuthorsMetadataLine(line)
         ? `${CONTENT_ESCAPE_PREFIX}${line}`
         : line,
     )
@@ -41,6 +42,7 @@ const decodeContent = (content: string) =>
     .join('\n')
 
 export const parseMarkdown = (source: string): ImportResult => {
+  source = notebookText(source)
   const warnings: string[] = []
   const dayMap = new Map<string, ParsedDay>()
   const matches = [...source.matchAll(DAY_MARKER)]

@@ -1,15 +1,23 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAutoSync } from './useAutoSync'
+import { registerPendingEditorSaves } from '../../lib/pendingEditorSaves'
 
 const coordinator = vi.hoisted(() => ({
   getTabSyncBlockReason: vi.fn(),
 }))
+const events = vi.hoisted(() => ({ startDailyOneDriveEvents: vi.fn<(target: unknown, onChanged: (event?: { type: string; dayId: string; item: string; revision: string }) => void, onError: (message: string) => void) => () => void>(() => vi.fn()) }))
+vi.mock('../../lib/oneDriveState', () => ({ getOneDriveState: async () => ({ folderId: '/drives/owner/items/notebook', accountId: 'alice', targetGeneration: 1 }) }))
+vi.mock('../../lib/oneDriveDailyState', () => ({ targetFromState: () => ({ folder: '/drives/owner/items/notebook', account: 'alice', generation: 1 }) }))
+const providerState = vi.hoisted(() => ({ getActiveProviderStatus: vi.fn() }))
+vi.mock('../../lib/oneDriveEvents', () => events)
+vi.mock('../../lib/sync', () => providerState)
 const syncActions = vi.hoisted(() => ({
   blockedPushMessage: vi.fn(),
   pullFromSyncAndRefresh: vi.fn(),
   pushToSyncAndRefresh: vi.fn(),
   recordSyncAttention: vi.fn(),
+  clearSyncIssue: vi.fn(),
 }))
 
 vi.mock('../../lib/tabSyncCoordinator', () => coordinator)
@@ -19,6 +27,7 @@ describe('useAutoSync tab coordination', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     coordinator.getTabSyncBlockReason.mockReturnValue(null)
+    providerState.getActiveProviderStatus.mockResolvedValue({ localDirty: false })
     syncActions.blockedPushMessage.mockReturnValue('Remote changed.')
     syncActions.pullFromSyncAndRefresh.mockResolvedValue({ status: 'noop' })
     syncActions.pushToSyncAndRefresh.mockResolvedValue({ status: 'pushed' })
@@ -27,6 +36,65 @@ describe('useAutoSync tab coordination', () => {
   afterEach(() => {
     vi.clearAllTimers()
     vi.useRealTimers()
+  })
+
+  it('defers a remote event while typing, then merges using the latest saved dirty state', async () => {
+    vi.useFakeTimers()
+    const hook = renderHook(() => useAutoSync({ connected: true, targetName: '/Rivolo', notebookChannel: '/drives/owner/items/notebook', localDirty: false }, 'onedrive'))
+    await act(async () => Promise.resolve())
+    const changed = events.startDailyOneDriveEvents.mock.calls[0][1]
+    let pending = ['2026-10-01']
+    const unregister = registerPendingEditorSaves(() => pending)
+    try {
+      syncActions.pullFromSyncAndRefresh.mockResolvedValue({ status: 'noop', deferredDayIds: ['2026-10-01'] })
+      await act(async () => changed({ type: 'day-changed', dayId: '2026-10-01', item: '/drives/owner/items/file', revision: 'v2' }))
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+      expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledWith({ force: false, dayIds: ['2026-10-01'] })
+      expect(syncActions.pushToSyncAndRefresh).not.toHaveBeenCalled()
+      pending = []
+      providerState.getActiveProviderStatus.mockResolvedValue({ localDirty: true })
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+      expect(syncActions.pushToSyncAndRefresh).toHaveBeenCalledWith(false)
+    } finally { unregister(); hook.unmount() }
+  })
+
+  it('does not poll OneDrive while idle and refreshes on return', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    const online = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    renderHook(() => useAutoSync({ connected: true, targetName: '/Rivolo', notebookChannel: '/drives/owner/items/notebook', localDirty: false }, 'onedrive'))
+    await act(async () => Promise.resolve())
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    visibility.mockReturnValue('hidden')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    visibility.mockReturnValue('visible')
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    await act(async () => Promise.resolve())
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    online.mockReturnValue(false)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    visibility.mockRestore()
+    online.mockRestore()
+  })
+
+  it('retries a failed OneDrive event reconciliation, then stays idle after recovery', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-30T12:00:00Z'))
+    syncActions.pullFromSyncAndRefresh.mockRejectedValueOnce(new Error('Network failed'))
+    renderHook(() => useAutoSync({ connected: true, targetName: '/Rivolo', notebookChannel: '/drives/owner/items/notebook', localDirty: false }, 'onedrive'))
+    await act(async () => Promise.resolve())
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(syncActions.pullFromSyncAndRefresh).toHaveBeenCalledTimes(2)
   })
 
   it('does not auto-pull when another tab owns the lease', () => {
