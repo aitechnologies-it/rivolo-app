@@ -16,7 +16,7 @@ export default function AppLogo({ identity, size = 'header', logoRef, animating 
     <span className={`app-brand relative inline-flex shrink-0 items-center ${hero ? 'gap-3' : 'gap-1.5'}`}>
       <img
         ref={logoRef}
-        src="/logo.png"
+        src="/logo.svg"
         alt="Rivolo"
         className={`${hero
           ? 'hero-logo relative h-16 w-auto drop-shadow-[0_12px_30px_rgba(15,23,42,0.16)] sm:h-20'

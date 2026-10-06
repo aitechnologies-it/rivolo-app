@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import type { AttentionItem } from '../../lib/attention'
+import { getAttentionSettingsHref, type AttentionItem } from '../../lib/attention'
 import type { SetupNoticeId } from '../../lib/setupAttention'
 
 type AttentionPopoverProps = {
@@ -70,7 +70,7 @@ export default function AttentionPopover({
             {items.map((item) => (
               <div key={item.id} className="flex items-start rounded-xl bg-amber-50">
                 <Link
-                  to={`/settings#${item.settingsSectionId}`}
+                  to={getAttentionSettingsHref(item)}
                   className="min-w-0 flex-1 rounded-xl px-3 py-2 outline-none transition hover:bg-amber-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
                   onClick={() => {
                     setIsOpen(false)

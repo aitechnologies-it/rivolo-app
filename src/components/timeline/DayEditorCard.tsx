@@ -7,6 +7,11 @@ import { todoKeymap, todoPointerHandler } from '../../lib/editor/todoExtensions'
 import { wrapSelectionOnDelimiter } from '../../lib/editor/wrapSelection'
 import { editorHighlights } from '../../lib/editorHighlights'
 import type { Day } from '../../lib/dayRepository'
+import { useSyncStore } from '../../store/useSyncStore'
+import { DayBlameDetails } from './DayBlame'
+import { useDayAttribution } from './useDayAttribution'
+import BlameIcon from './BlameIcon'
+import { blameGutter, type BlameGroup } from '../../lib/editor/blameGutter'
 
 type DayEditorCardProps = {
   day: Day
@@ -42,6 +47,9 @@ type DayEditorCardProps = {
 }
 
 type DayEditorCardHeaderProps = {
+  showBlameButton: boolean
+  blameOpen: boolean
+  onToggleBlame: () => void
   day: Day
   isFuture: boolean
   isToday: boolean
@@ -69,7 +77,10 @@ const getDayTitleSizeClass = (isToday: boolean, isYesterday: boolean, isTomorrow
   return 'text-[1.3rem]'
 }
 
-const DayEditorCardHeader = ({
+export const DayEditorCardHeader = ({
+  showBlameButton,
+  blameOpen,
+  onToggleBlame,
   day,
   isFuture,
   isToday,
@@ -86,24 +97,24 @@ const DayEditorCardHeader = ({
 }: DayEditorCardHeaderProps) => {
   const menuRef = useRef<HTMLDivElement | null>(null)
   const dateInputRef = useRef<HTMLInputElement | null>(null)
-  const [showDeleteMenu, setShowDeleteMenu] = useState(false)
+  const [showActionsMenu, setShowActionsMenu] = useState(false)
 
   useEffect(() => {
-    if (!showDeleteMenu) return
+    if (!showActionsMenu) return
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target
       if (target instanceof Node && menuRef.current?.contains(target)) {
         return
       }
-      setShowDeleteMenu(false)
+      setShowActionsMenu(false)
     }
 
     document.addEventListener('pointerdown', handlePointerDown)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
-  }, [showDeleteMenu])
+  }, [showActionsMenu])
 
   const handleOpenDatePicker = () => {
     const input = dateInputRef.current
@@ -137,8 +148,8 @@ const DayEditorCardHeader = ({
   }
 
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div className="relative flex items-center gap-2 text-left" onClick={handleOpenDatePicker}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="relative flex min-w-0 items-center gap-2 text-left" onClick={handleOpenDatePicker}>
         <h3
           className={`day-title ${titleSizeClass} ${isFuture ? 'opacity-70' : ''}`}
           style={{ fontFamily: titleFontFamily }}
@@ -160,22 +171,44 @@ const DayEditorCardHeader = ({
         />
       </div>
       <div className="flex items-center gap-2">
+        {showBlameButton && <button
+          type="button"
+          className={`touch-hide pointer-events-none flex h-11 w-11 items-center justify-center rounded-full border opacity-0 shadow-sm transition group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 sm:h-8 sm:w-8 ${blameOpen ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+          aria-label={`${blameOpen ? 'Hide' : 'Show'} line authors for ${day.dayId}`}
+          aria-pressed={blameOpen}
+          aria-controls={`day-blame-${day.dayId}`}
+          onClick={onToggleBlame}
+          title={blameOpen ? 'Hide authors' : 'Show authors'}
+        ><BlameIcon /></button>}
         <div ref={menuRef} className="relative touch-actions">
           <button
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 sm:h-8 sm:w-8"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
             type="button"
             aria-label="Open note actions"
-            onClick={() => setShowDeleteMenu((state) => !state)}
+            aria-expanded={showActionsMenu}
+            aria-controls={`day-actions-${day.dayId}`}
+            onClick={() => setShowActionsMenu((state) => !state)}
           >
             <img src="/dots-three.svg" alt="" className="h-4 w-4 opacity-70" />
           </button>
-          {showDeleteMenu && (
-            <div className="absolute right-0 top-12 z-10 min-w-[150px] rounded-xl border border-slate-200 bg-white p-1 shadow-lg sm:top-10">
+          {showActionsMenu && (
+            <div id={`day-actions-${day.dayId}`} className="absolute right-0 top-12 z-10 min-w-[150px] rounded-xl border border-slate-200 bg-white p-1 shadow-lg sm:top-10">
+              {showBlameButton && <button
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                type="button"
+                aria-label={`${blameOpen ? 'Hide' : 'Show'} line authors for ${day.dayId}`}
+                aria-pressed={blameOpen}
+                aria-controls={`day-blame-${day.dayId}`}
+                onClick={() => {
+                  setShowActionsMenu(false)
+                  onToggleBlame()
+                }}
+              ><BlameIcon />{blameOpen ? 'Hide authors' : 'Authors'}</button>}
               <button
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
                 type="button"
                 onClick={() => {
-                  setShowDeleteMenu(false)
+                  setShowActionsMenu(false)
                   void onDelete(day.dayId)
                 }}
               >
@@ -246,7 +279,34 @@ const DayEditorCard = memo(({
   registerEditor,
   registerDayRef,
 }: DayEditorCardProps) => {
+  const activeProvider = useSyncStore((state) => state.activeProvider)
+  const [blameOpen, setBlameOpen] = useState(false)
+  const showBlame = blameOpen && activeProvider === 'onedrive'
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const detailsRef = useRef<HTMLDivElement | null>(null)
+  const [details, setDetails] = useState<{ group: BlameGroup; left: number; top: number; content: string } | null>(null)
+  const attribution = useDayAttribution(day.dayId, day.contentMd, day.updatedAt, showBlame)
+  const openAuthorDetails = useCallback((group: BlameGroup, anchor: HTMLElement) => {
+    const card = anchor.closest('.day-editor-card')?.getBoundingClientRect()
+    if (!card) return
+    const rect = anchor.getBoundingClientRect()
+    setDetails((current) => current?.group.start === group.start && current.content === day.contentMd ? null : {
+      group, content: day.contentMd, left: Math.max(8, Math.min(rect.left - card.left, card.width - 232)), top: rect.bottom - card.top + 4,
+    })
+  }, [day.contentMd])
+  useEffect(() => {
+    if (!details) return
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Element && event.target.closest('.cm-blame-badge')) return
+      if (event.target instanceof Node && !detailsRef.current?.contains(event.target)) setDetails(null)
+    }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setDetails(null) }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
+  }, [details])
+  const authorsExtension = useMemo(() => activeProvider === 'onedrive' ? blameGutter(day.dayId, attribution.attribution, openAuthorDetails) : [],
+    [activeProvider, day.dayId, attribution.attribution, openAuthorDetails])
   const searchHighlight = useMemo(() => createHighlightPlugin(searchQuery), [searchQuery])
   const quoteHighlight = useMemo(() => (quote ? createHighlightPlugin(quote) : null), [quote])
   const previewContent = useMemo(() => {
@@ -323,6 +383,7 @@ const DayEditorCard = memo(({
       todoKeymap,
       todoPointerHandler,
       ...editorHighlights,
+      authorsExtension,
     ]
     if (searchHighlight) {
       extensions.push(searchHighlight)
@@ -332,6 +393,7 @@ const DayEditorCard = memo(({
     }
     return extensions
   }, [
+    authorsExtension,
     clearActiveLine,
     editorTheme,
     markdownExtension,
@@ -353,7 +415,7 @@ const DayEditorCard = memo(({
     <div
       ref={handleContainerRef}
       data-scroll-target={isToday ? 'today' : undefined}
-      className={`day-editor-card scroll-anchor group rounded-[4px] border p-4 transition ${
+      className={`day-editor-card relative scroll-anchor group rounded-[4px] border p-4 transition ${
         heroReveal ? 'hero-reveal' : ''
       } ${
         isFuture
@@ -362,6 +424,16 @@ const DayEditorCard = memo(({
       }`}
     >
       <DayEditorCardHeader
+        showBlameButton={activeProvider === 'onedrive'}
+        blameOpen={showBlame}
+        onToggleBlame={() => {
+          if (!showBlame) {
+            onBlur(day.dayId)
+            if (!shouldMountEditor) onRequestEditorMount(day.dayId, 'start')
+          }
+          setDetails(null)
+          setBlameOpen(!showBlame)
+        }}
         day={day}
         isFuture={isFuture}
         isToday={isToday}
@@ -381,8 +453,11 @@ const DayEditorCard = memo(({
           {dateError}
         </div>
       )}
-      <div className="mt-3 overflow-hidden rounded-xl">
-        {shouldMountEditor ? (
+      {attribution.loading && <span role="status" className="sr-only">Loading authors…</span>}
+      {attribution.failed && <span role="alert" className="sr-only">Could not load authors. Toggle authors to retry.</span>}
+      {showBlame && details?.content === day.contentMd && <div ref={detailsRef}><DayBlameDetails {...details} onClose={() => setDetails(null)} /></div>}
+      <div id={`day-blame-${day.dayId}`} className="mt-3 overflow-hidden rounded-xl">
+        {shouldMountEditor || showBlame ? (
           <CodeMirror
             value={day.contentMd}
             extensions={editorExtensions}
@@ -396,7 +471,7 @@ const DayEditorCard = memo(({
           />
         ) : (
           <button
-            className="block min-h-[34px] w-full cursor-text rounded-xl border border-slate-100 bg-white px-2 py-1 text-left text-[0.98rem] leading-6 text-[var(--theme-editor-text)] transition hover:border-slate-200"
+            className={`block min-h-[34px] w-full cursor-text rounded-xl border border-slate-100 bg-white px-2 py-1 text-left text-[0.98rem] leading-6 text-[var(--theme-editor-text)] transition hover:border-slate-200 ${activeProvider === 'onedrive' ? 'pl-[42px]' : ''}`}
             type="button"
             aria-label={`Edit note for ${day.dayId}`}
             onClick={() => onRequestEditorMount(day.dayId, 'end')}

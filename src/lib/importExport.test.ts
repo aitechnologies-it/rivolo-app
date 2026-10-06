@@ -230,6 +230,29 @@ prefix <!-- day:2024-12-31 --> suffix`
     expect(mocks.set).not.toHaveBeenCalled()
   })
 
+  it('applies remote day deletions with a backup while still rejecting duplicate markers', async () => {
+    mocks.listAllDays.mockResolvedValue([localDay('2026-06-30', 'keep'), localDay('2026-06-29', 'deleted')])
+    const { importMarkdownToDb } = await import('./importExport')
+    const source = markdownDay('2026-06-30', 'remote')
+    await importMarkdownToDb(source, { replace: true, allowDeletedDays: true })
+    expect(mocks.set).toHaveBeenCalled()
+    expect(mocks.replaceDays).toHaveBeenCalledOnce()
+    await expect(importMarkdownToDb(`${source}\n\n${source}`, { replace: true, allowDeletedDays: true }))
+      .rejects.toMatchObject({ reasons: ['duplicate-day-markers'] })
+    expect(mocks.replaceDays).toHaveBeenCalledOnce()
+  })
+
+  it('checks for new local edits after saving the backup and before replacement', async () => {
+    mocks.listAllDays.mockResolvedValue([localDay('2026-06-30', 'local')])
+    const { importMarkdownToDb } = await import('./importExport')
+    await expect(importMarkdownToDb(markdownDay('2026-06-30', 'remote'), {
+      replace: true,
+      beforeReplace: async () => { throw new Error('Local edits arrived') },
+    })).rejects.toThrow('Local edits arrived')
+    expect(mocks.set).toHaveBeenCalled()
+    expect(mocks.replaceDays).not.toHaveBeenCalled()
+  })
+
   it('reports every safety problem in one error', async () => {
     mocks.listAllDays.mockResolvedValue([
       localDay('2026-06-30', 'keep me'),

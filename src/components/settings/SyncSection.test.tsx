@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { AgentAccessProfile } from '../../lib/agentAccess'
 import SyncSection from './SyncSection'
 import type { SyncProviderSummary } from './SyncSection'
 
@@ -21,6 +22,7 @@ const notConnectedSummary: SyncProviderSummary = {
 const bothConnected = {
   dropbox: connectedSummary,
   'google-drive': connectedSummary,
+  onedrive: notConnectedSummary,
 }
 
 const baseProps = {
@@ -50,6 +52,32 @@ const baseProps = {
 const USE_CLOUD_LABEL = 'Use cloud version — replaces notes on this device'
 const KEEP_LOCAL_LABEL = "Keep this device's notes — replaces the cloud copy"
 
+const agentProfile: AgentAccessProfile = {
+  profileId: '00000000-0000-4000-8000-000000000001',
+  provider: 'dropbox',
+  providerAccountId: 'dbid:one',
+  providerEmail: 'person@example.com',
+  providerName: 'Person',
+  target: { path: '/inbox.md' },
+  timeZone: 'Europe/Rome',
+  createdAt: '2026-07-16T10:00:00.000Z',
+  updatedAt: '2026-07-16T10:00:00.000Z',
+  revokedAt: null,
+}
+
+const enabledAgentAccess = {
+  view: { state: 'enabled' as const, profile: agentProfile, message: null },
+  busy: false,
+  online: true,
+  targetReady: true,
+  statusKnown: true,
+  enabled: true,
+  boundToProvider: true,
+  onEnable: vi.fn(),
+  onDisable: vi.fn(),
+  onRetry: vi.fn(),
+}
+
 const openSyncRow = async (id: string) => {
   const header = screen
     .getAllByRole('button')
@@ -58,13 +86,37 @@ const openSyncRow = async (id: string) => {
 }
 
 describe('SyncSection', () => {
-  it('starts with both provider rows collapsed when no sync provider is active', () => {
+  it('opens OneDrive on a notification request and lets the user collapse and reopen it', async () => {
+    const { rerender } = render(<SyncSection {...baseProps} provider="onedrive" openRequest={1} />)
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
+    await openSyncRow('onedrive')
+    expect(screen.queryByLabelText('Shared folder link or OneDrive folder path')).not.toBeInTheDocument()
+    rerender(<SyncSection {...baseProps} provider="onedrive" openRequest={2} />)
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeVisible()
+  })
+
+  it('exposes a shared OneDrive target in Basic mode and disables sync while disconnected', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" targetDraft="https://1drv.ms/u/shared" />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toHaveValue('https://1drv.ms/u/shared')
+    expect(screen.getByRole('button', { name: 'Connect OneDrive' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Pull from OneDrive' })).toBeDisabled()
+    expect(screen.getByText(/Each Microsoft account needs edit access/)).toBeVisible()
+  })
+
+  it('disables target editing during an active transfer', async () => {
+    render(<SyncSection {...baseProps} provider="onedrive" syncBusy />)
+    await openSyncRow('onedrive')
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeDisabled()
+  })
+
+  it('starts with all provider rows collapsed when no sync provider is active', () => {
     render(<SyncSection {...baseProps} activeProvider={null} />)
 
     const rowHeaders = screen
       .getAllByRole('button')
       .filter((button) => button.getAttribute('aria-controls')?.startsWith('sync-panel-'))
-    expect(rowHeaders).toHaveLength(2)
+    expect(rowHeaders).toHaveLength(3)
     for (const header of rowHeaders) {
       expect(header).toHaveAttribute('aria-expanded', 'false')
     }
@@ -242,7 +294,7 @@ describe('SyncSection', () => {
 
     await openSyncRow('dropbox')
     // Basic controls remain (superset).
-    expect(screen.getByText(/Account:/)).toBeInTheDocument()
+    expect(screen.getByText(connectedSummary.account)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Disconnect Dropbox' })).toBeInTheDocument()
     // Advanced controls are added.
     expect(screen.getByText(/Tab sync: Primary tab/)).toBeInTheDocument()
@@ -372,6 +424,7 @@ describe('SyncSection', () => {
         summaries={{
           dropbox: notConnectedSummary,
           'google-drive': notConnectedSummary,
+          onedrive: notConnectedSummary,
         }}
       />,
     )
@@ -379,5 +432,122 @@ describe('SyncSection', () => {
     await openSyncRow('dropbox')
     expect(screen.getByRole('button', { name: 'Pull from Dropbox' })).toBeDisabled()
     expect(screen.getByText('Connect Dropbox to enable sync actions.')).toBeInTheDocument()
+  })
+
+  it('shows Agent access only inside the connected active provider panel', async () => {
+    const { rerender } = render(
+      <SyncSection
+        {...baseProps}
+        provider="google-drive"
+        agentAccess={{ ...enabledAgentAccess, boundToProvider: false }}
+      />,
+    )
+
+    await openSyncRow('google-drive')
+    expect(screen.queryByRole('heading', { name: 'Agent access' })).not.toBeInTheDocument()
+
+    rerender(<SyncSection {...baseProps} provider="dropbox" agentAccess={enabledAgentAccess} />)
+    expect(screen.getByRole('heading', { name: 'Agent access' })).toBeInTheDocument()
+  })
+
+  it('keeps OneDrive target and disconnect available when hosted Agent access is unavailable', async () => {
+    const onDisconnect = vi.fn()
+    const onSaveTarget = vi.fn()
+    render(
+      <SyncSection
+        {...baseProps}
+        activeProvider="onedrive"
+        provider="onedrive"
+        summaries={{ ...bothConnected, onedrive: connectedSummary }}
+        targetDirty
+        onDisconnect={onDisconnect}
+        onSaveTarget={onSaveTarget}
+        agentAccess={{
+          ...enabledAgentAccess,
+          view: { state: 'error', profile: null, message: 'Hosted MCP is unavailable.' },
+          statusKnown: false,
+          enabled: false,
+          boundToProvider: false,
+        }}
+      />,
+    )
+
+    await openSyncRow('onedrive')
+    expect(screen.queryByRole('heading', { name: 'Agent access' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Enable for OneDrive' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Shared folder link or OneDrive folder path')).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+    expect(onSaveTarget).toHaveBeenCalledOnce()
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect OneDrive' }))
+    expect(onDisconnect).toHaveBeenCalledOnce()
+  })
+
+  it('requires disabling existing Agent access when switching to OneDrive', async () => {
+    const onActivate = vi.fn()
+    render(
+      <SyncSection
+        {...baseProps}
+        provider="onedrive"
+        summaries={{ ...bothConnected, onedrive: connectedSummary }}
+        onActivate={onActivate}
+        agentAccess={{ ...enabledAgentAccess, boundToProvider: false }}
+      />,
+    )
+
+    await openSyncRow('onedrive')
+    await userEvent.click(screen.getByRole('button', { name: 'Disable Agent access, then use OneDrive' }))
+    expect(onActivate).toHaveBeenCalledOnce()
+  })
+
+  it('makes disable-before-switch explicit in the activation action', async () => {
+    const onActivate = vi.fn()
+    render(
+      <SyncSection
+        {...baseProps}
+        provider="google-drive"
+        onActivate={onActivate}
+        agentAccess={{ ...enabledAgentAccess, boundToProvider: false }}
+      />,
+    )
+
+    await openSyncRow('google-drive')
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Disable Agent access, then use Google Drive',
+      }),
+    )
+    expect(onActivate).toHaveBeenCalledOnce()
+  })
+
+  it('makes disable-before-target-change explicit and blocks it until status is known', async () => {
+    const { rerender } = render(
+      <SyncSection
+        {...baseProps}
+        advanced
+        targetDirty
+        agentAccess={enabledAgentAccess}
+      />,
+    )
+
+    await openSyncRow('dropbox')
+    expect(
+      screen.getByRole('button', { name: 'Disable Agent access & save' }),
+    ).toBeEnabled()
+
+    rerender(
+      <SyncSection
+        {...baseProps}
+        advanced
+        targetDirty
+        agentAccess={{
+          ...enabledAgentAccess,
+          view: { state: 'loading', profile: null, message: null },
+          statusKnown: false,
+          enabled: false,
+          boundToProvider: false,
+        }}
+      />,
+    )
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 })

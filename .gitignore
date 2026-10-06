@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-mcp
+dist-mcp-worker
 dist-ssr
 *.local
 .env
@@ -29,6 +30,8 @@ dist-ssr
 *.sw?
 
 plans/
+!docs/plans/
+!docs/plans/**
 
 # Local notes data (source file the local MCP server reads)
 mcp/inbox.md

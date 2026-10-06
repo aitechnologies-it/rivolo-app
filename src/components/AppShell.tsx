@@ -101,7 +101,6 @@ export default function AppShell() {
   const showMobileChatTogglePill =
     isNarrowViewportMode && mode === 'chat' && (chatPanelOpen || chatMessageCount > 0)
   const showDesktopChatEdgeHandle = !isNarrowViewportMode && isDesktopChatModeWithMessages
-  const showMobileChatHeaderBlur = isHome && isNarrowViewportMode && mode === 'chat' && chatPanelOpen
   const showMobileNewChatButton =
     isHome && mode === 'chat' && isNarrowViewportMode && chatMessageCount > 0
   const showDesktopShortcutsButton = isHome && !isNarrowViewportMode
@@ -117,6 +116,7 @@ export default function AppShell() {
   const attentionItems = buildAttentionItems({
     persistFailureMessage,
     syncAttentionMessage: syncAttention?.message ?? null,
+    activeSyncProvider: activeProvider,
     setupNotices,
   })
   const isTimelineEmpty = timelineEmpty ?? !timelineHasNotes
@@ -330,7 +330,7 @@ export default function AppShell() {
   }, [showTrayRow])
 
   useKeyboardOffsetCssVar()
-  useAutoSync(syncStatus)
+  useAutoSync(syncStatus, activeProvider)
 
   useEffect(() => {
     if (!showShortcuts) return
@@ -410,14 +410,8 @@ export default function AppShell() {
         }`}
       />
       <header
-        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 sm:fixed sm:gap-0 sm:px-0"
+        className="app-shell-fixed-header-width app-shell-fixed-right-aware relative left-0 z-30 mx-auto mt-4 grid h-16 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 sm:fixed sm:mt-0 sm:gap-0 sm:px-0"
       >
-        {showMobileChatHeaderBlur && (
-          <div
-            className="pointer-events-none absolute left-1/2 top-0 z-0 h-16 w-screen -translate-x-1/2 bg-[var(--theme-blur-surface)] shadow-[0_4px_12px_rgb(var(--theme-shadow-color)/0.10)] backdrop-blur-md sm:hidden"
-            aria-hidden="true"
-          />
-        )}
         <div className="relative z-10 flex items-center gap-2">
           {showBackButton && (
             <NavLink to={backTarget} className={backButtonClass} aria-label="Back">

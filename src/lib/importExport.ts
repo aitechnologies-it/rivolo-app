@@ -131,7 +131,11 @@ const DUPLICATE_MARKERS_PROBLEM = 'the file contains duplicate day markers (the 
 
 export const importMarkdownToDb = async (
   source: string,
-  options: { replace?: boolean; markDirty?: boolean; allowUnsafeImport?: boolean } = {},
+  options: {
+    replace?: boolean; markDirty?: boolean; allowUnsafeImport?: boolean
+    allowDeletedDays?: boolean
+    beforeReplace?: () => Promise<void>
+  } = {},
 ) => {
   const { days, warnings } = parseMarkdown(source)
   const markDirty = options.markDirty ?? true
@@ -192,7 +196,7 @@ export const importMarkdownToDb = async (
     reasons.push('duplicate-day-markers')
     problems.push(DUPLICATE_MARKERS_PROBLEM)
   }
-  if (deletedDayIds.length > 0) {
+  if (deletedDayIds.length > 0 && !options.allowDeletedDays) {
     reasons.push('would-delete-local-days')
     problems.push(`it would delete ${deletedDayIds.length} local day(s)`)
   }
@@ -208,6 +212,7 @@ export const importMarkdownToDb = async (
   await saveRollbackBackup(exportMarkdown(currentDays))
 
   await runBulkDatabaseMutation(async () => {
+    await options.beforeReplace?.()
     await replaceDays(normalizedDays, { markDirty })
   })
 
