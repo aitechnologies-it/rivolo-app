@@ -71,7 +71,7 @@ export default function AppearanceSection({
           fontSize: bodyFontChoice === 'lato' ? '0.98rem' : getMonospaceFontSize(bodyFontChoice),
         }}
       >
-        <p>{appIdentity === 'ait' ? '@marta review the release plan at 10:30' : '@bob send message for breakfast at 8:30'}</p>
+        <p>@bob send message for breakfast at 8:30</p>
         <p>Budget: 1,024 € + 15% ≈ 1,178 € --{'>'} due 31/12 (v1.0)</p>
       </div>
     </>
@@ -123,7 +123,6 @@ export default function AppearanceSection({
               <p className="mt-1 text-xs text-slate-500">{identity.description}</p>
             </div>
           </div>
-          <p className="mb-3 text-xs text-slate-500">Only changes the app’s appearance. Choose before adding to your home screen; an installed icon may keep its previous look.</p>
         </div>
         <SettingRow label="Theme">
           <SegmentedControl
