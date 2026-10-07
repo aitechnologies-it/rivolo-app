@@ -6,7 +6,7 @@
 
 Rivolo (REE-voh-loh) is the Italian word for "small stream". Every day, you write your thoughts, ideas, notes and todos without organizing anything. Whenever you need to find something complex, just ask the LLM to surface what you need.
 
-Try it here: [rivolo.app](https://rivolo.app)
+Try it here: [rivolo.aitlab.it](https://rivolo.aitlab.it)
 
 Rivolo is a local-first PWA deployed on Cloudflare Pages. Notes, settings, AI requests, and cloud file transfers normally run in the browser. Same-origin Pages Functions exchange and refresh Google Drive, Dropbox, and OneDrive OAuth credentials. For OneDrive, an authenticated Cloudflare WebSocket relay distributes day-change events and a migration registry stores source/destination identifiers; these services never receive note contents. AI prompts and relevant notes are sent only when you ask, directly to the provider you select: Gemini, Anthropic, OpenAI, or your own OpenAI-compatible endpoint. Dropbox, Google Drive, or OneDrive receives notes only if you enable that sync provider. Custom endpoints must be reachable from the device and allow Rivolo's browser origin, headers, and HTTPS connection; on a phone, `localhost` refers to the phone itself.
 
@@ -52,14 +52,16 @@ Rivolo’s core is a simple, local-first daily stream. This fork aims to support
 
 Settings → Appearance → App identity switches between Rivolo and Rivolo x AIT. The choice stays on the current device and web address; it does not change notes or sync settings. The company domain, `rivolo.aitlab.it`, defaults to AIT, while `rivolo.app` defaults to Rivolo.
 
-For the company deployment, set `VITE_APP_IDENTITY=ait` in the build environment so the initial HTML also contains the company title and installation icons. To preview that build locally:
+This fork’s `.env.production` defaults production builds to AIT, so the initial HTML contains the company title, manifest, and home-screen icon before JavaScript runs. An explicit `VITE_APP_IDENTITY=rivolo` in the build environment produces a Rivolo build. To preview the company build locally:
 
 ```bash
-VITE_APP_IDENTITY=ait npm run build
+npm run build
 npm run preview
 ```
 
 Choose the identity before adding the app to the home screen. Browsers may keep an already installed icon or name until the app is added again. Each identity has its own manifest and icons, with a shared app ID on the same web address. The personal and company domains have separate browser storage.
+
+The installation URLs use `?identity=ait` or `?identity=rivolo`. They seed the identity in fresh browser storage; an Appearance preference already saved on that origin takes precedence.
 
 The company brain in `public/ait-brain.svg` comes from the supplied AI Technologies SVG, with the lettering removed. The white-and-blue stream icons in `public/icons/ait-*.png` were created with the builtin imagegen tool from Rivolo's existing icon using this prompt:
 
