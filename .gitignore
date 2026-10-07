@@ -15,6 +15,8 @@ dist-ssr
 *.local
 .env
 .env.*
+# This file contains only the public identity default for the company build.
+!.env.production
 .dev.vars
 .wrangler/
 
