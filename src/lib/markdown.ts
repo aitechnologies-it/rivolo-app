@@ -65,7 +65,11 @@ export const parseMarkdown = (source: string): ImportResult => {
 
     const start = (match.index ?? 0) + match[0].length
     const end = matches[index + 1]?.index ?? source.length
-    const block = source.slice(start, end).replace(/^\n+/, '')
+    // Only the two newlines between day blocks belong to the notebook format.
+    // Other whitespace belongs to the draft, including an empty last paragraph.
+    const rawBlock = source.slice(start, end)
+    const block = (index + 1 < matches.length ? rawBlock.replace(/(?:\r?\n){2}$/, '') : rawBlock)
+      .replace(/^\n+/, '')
     const lines = block.split('\n')
 
     const firstNonEmptyIndex = lines.findIndex((line) => line.trim().length > 0)
@@ -85,7 +89,7 @@ export const parseMarkdown = (source: string): ImportResult => {
       }
     }
 
-    const contentMd = decodeContent(lines.slice(contentStart).join('\n').trimEnd())
+    const contentMd = decodeContent(lines.slice(contentStart).join('\n'))
 
     if (dayMap.has(dayId)) {
       warnings.push(`Duplicate day marker for ${dayId}; using last block.`)
@@ -104,7 +108,7 @@ export const exportMarkdown = (days: Day[]) => {
     .map((day) => {
       const title = day.humanTitle || formatDayTitle(day.dayId)
       const underline = '-'.repeat(Math.max(3, title.length))
-      const content = encodeContent(day.contentMd.trimEnd())
+      const content = encodeContent(day.contentMd)
       return [
         `<!-- day:${day.dayId} -->`,
         title,
@@ -112,9 +116,7 @@ export const exportMarkdown = (days: Day[]) => {
         '',
         content,
       ]
-        .filter((line, index, array) => !(index === array.length - 1 && line === ''))
         .join('\n')
     })
     .join('\n\n')
-    .trimEnd()
 }
