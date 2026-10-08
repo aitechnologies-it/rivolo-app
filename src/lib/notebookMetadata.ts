@@ -14,5 +14,5 @@ export const appendAuthorsMetadata = (source: string, metadata: unknown) => {
   const bytes = new TextEncoder().encode(JSON.stringify(metadata))
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
-  return `${notebookText(source).trimEnd()}\n\n<!-- rivolo:authors:v1 ${btoa(binary)} -->`
+  return `${notebookText(source)}\n\n<!-- rivolo:authors:v1 ${btoa(binary)} -->`
 }
