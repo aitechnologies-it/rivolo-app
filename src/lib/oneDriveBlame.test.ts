@@ -9,6 +9,27 @@ const notebook = (text: string) => exportMarkdown([{ dayId, humanTitle: 'Thursda
 const attributed = (text: string, names: (string | null)[]) => writeNotebookAuthors(notebook(text), new Map([[dayId, names]]))
 
 describe('OneDrive line attribution', () => {
+  it('retains blank draft lines and their authors when replacing the metadata footer', async () => {
+    const content = 'First\n\n\n'
+    let file = await attributed(content, ['Bob', 'Alice', 'Alice', 'Alice'])
+    for (let cycle = 0; cycle < 3; cycle++) {
+      expect(parseMarkdown(file).days[0].contentMd).toBe(content)
+      expect((await readNotebookAuthors(file)).get(dayId)).toEqual(['Bob', 'Alice', 'Alice', 'Alice'])
+      file = await annotateLocalNotebook(file, file, 'Carol')
+    }
+  })
+
+  it('merges another writer’s edit while retaining the local empty paragraph and attribution', async () => {
+    const base = await attributed('First\nSecond', ['Bob', 'Bob'])
+    const local = await annotateLocalNotebook(notebook('First\nSecond\n\n'), base, 'Alice')
+    const remote = await annotateLocalNotebook(notebook('Updated\nSecond'), base, 'Bob')
+    const merged = await mergeOneDriveNotebooksWithAuthors(base, local, remote)
+    expect(parseMarkdown(merged).days[0].contentMd).toBe('Updated\nSecond\n\n')
+    expect((await readNotebookAuthors(merged)).get(dayId)).toEqual(['Bob', 'Bob', 'Alice', 'Alice'])
+    const retry = await mergeOneDriveNotebooksWithAuthors(base, local, merged)
+    expect(parseMarkdown(retry).days[0].contentMd).toBe('Updated\nSecond\n\n')
+  })
+
   it('reads legacy names without inventing dates, and records only the date of changed lines', async () => {
     const base = await attributed('First\nSecond', ['Bob', 'Bob'])
     expect((await readNotebookAttribution(base)).get(dayId)).toEqual([{ author: 'Bob', date: null }, { author: 'Bob', date: null }])

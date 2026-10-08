@@ -50,6 +50,41 @@ const baseline = async (content: string, dayId = id) => {
 }
 
 describe('OneDrive daily notebook sync', () => {
+  it('keeps trailing returns after saving, uploading, and receiving the same document', async () => {
+    await baseline(doc('First'))
+    const days = await import('./dayRepository')
+    const sync = await import('./oneDrive')
+    const content = 'First\n\n\n'
+    await days.saveDay(id, content)
+    expect(await sync.pushToOneDrive()).toMatchObject({ status: 'pushed' })
+    expect((await days.getDay(id))?.contentMd).toBe(content)
+    const { decodeNotebookDay } = await import('./notebookDays')
+    const uploaded = graph.texts.get(`file-${id}`)!
+    expect(decodeNotebookDay(uploaded, id).contentMd).toBe(content)
+    graph.addDay(id, uploaded, 'v3')
+    expect(await sync.pullFromOneDrive({ dayIds: [id] })).toEqual({ status: 'noop' })
+    expect((await days.getDay(id))?.contentMd).toBe(content)
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(false)
+  })
+
+  it('keeps an offline empty paragraph while retrying and merging concurrent remote edits', async () => {
+    await baseline(doc('First\nSecond'))
+    const days = await import('./dayRepository')
+    const sync = await import('./oneDrive')
+    await days.saveDay(id, 'First\nSecond\n\n')
+    graph.setFailure(id)
+    await expect(sync.pushToOneDrive()).rejects.toThrow()
+    expect((await days.getDay(id))?.contentMd).toBe('First\nSecond\n\n')
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(true)
+    graph.addDay(id, doc('Remote edit\nSecond'), 'v2')
+    graph.setFailure(null)
+    await sync.pushToOneDrive()
+    expect((await days.getDay(id))?.contentMd).toBe('Remote edit\nSecond\n\n')
+    expect(await sync.pushToOneDrive()).toEqual({ status: 'clean' })
+    expect(graph.counters.commits).toEqual([id])
+    expect((await sync.getOneDriveStatus()).localDirty).toBe(false)
+  })
+
   it('verifies SharePoint conditional content writes, removes its probe and merges a race without losing additions', async () => {
     graph.setDriveType('documentLibrary')
     await baseline(doc('First'))
