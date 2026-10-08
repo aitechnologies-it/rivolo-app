@@ -84,7 +84,7 @@ export const blameGutter = (dayId: string, attribution: LineAttribution[] | null
     '.cm-blame-spacer': { display: 'block', width: '28px' },
     '.cm-blame-badge': { display: 'block', width: '28px', height: '20px', margin: '0', padding: '0',
       border: '1px solid var(--theme-border)', borderRadius: '5px', background: 'var(--theme-surface-soft)',
-      color: 'var(--theme-text-muted)', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
+      color: '#475569', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
     '.cm-blame-badge:hover, .cm-blame-badge:focus-visible': { color: 'var(--theme-accent)', borderColor: 'var(--theme-accent)', outline: 'none' },
     '.cm-blame-rail::before': { content: '""', position: 'absolute', top: '0', bottom: '0', left: '17px',
       borderLeft: '1px solid var(--theme-border)' },
