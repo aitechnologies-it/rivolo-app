@@ -21,6 +21,17 @@ export const groupLineAttribution = (attribution: LineAttribution[], dayId: stri
   return groups
 }
 
+// Keep each author's randomly assigned pastel consistent across cards and edits.
+const authorColors = new Map<string | null, string>()
+const authorColor = (author: string | null) => {
+  let color = authorColors.get(author)
+  if (!color) {
+    color = `hsl(${Math.floor(Math.random() * 360)} 55% 94%)`
+    authorColors.set(author, color)
+  }
+  return color
+}
+
 class Spacer extends GutterMarker {
   toDOM() { const element = document.createElement('span'); element.className = 'cm-blame-spacer'; return element }
 }
@@ -37,6 +48,7 @@ class Badge extends GutterMarker {
     const label = [this.group.author || 'Unknown author', ...this.group.dates.map(formatDayTitle)].join(' · ')
     button.type = 'button'
     button.className = 'cm-blame-badge'
+    button.style.backgroundColor = authorColor(this.group.author)
     button.textContent = authorInitials(this.group.author)
     button.title = label
     button.setAttribute('aria-label', label)
