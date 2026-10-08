@@ -10,7 +10,6 @@ import type { Day } from '../../lib/dayRepository'
 import { useSyncStore } from '../../store/useSyncStore'
 import { DayBlameDetails } from './DayBlame'
 import { useDayAttribution } from './useDayAttribution'
-import BlameIcon from './BlameIcon'
 import { blameGutter, type BlameGroup } from '../../lib/editor/blameGutter'
 
 type DayEditorCardProps = {
@@ -47,9 +46,6 @@ type DayEditorCardProps = {
 }
 
 type DayEditorCardHeaderProps = {
-  showBlameButton: boolean
-  blameOpen: boolean
-  onToggleBlame: () => void
   day: Day
   isFuture: boolean
   isToday: boolean
@@ -78,9 +74,6 @@ const getDayTitleSizeClass = (isToday: boolean, isYesterday: boolean, isTomorrow
 }
 
 export const DayEditorCardHeader = ({
-  showBlameButton,
-  blameOpen,
-  onToggleBlame,
   day,
   isFuture,
   isToday,
@@ -171,15 +164,6 @@ export const DayEditorCardHeader = ({
         />
       </div>
       <div className="flex items-center gap-2">
-        {showBlameButton && <button
-          type="button"
-          className={`touch-hide pointer-events-none flex h-11 w-11 items-center justify-center rounded-full border opacity-0 shadow-sm transition group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 sm:h-8 sm:w-8 ${blameOpen ? 'border-slate-300 bg-slate-100 text-slate-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
-          aria-label={`${blameOpen ? 'Hide' : 'Show'} line authors for ${day.dayId}`}
-          aria-pressed={blameOpen}
-          aria-controls={`day-blame-${day.dayId}`}
-          onClick={onToggleBlame}
-          title={blameOpen ? 'Hide authors' : 'Show authors'}
-        ><BlameIcon /></button>}
         <div ref={menuRef} className="relative touch-actions">
           <button
             className="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition hover:border-slate-300"
@@ -193,17 +177,6 @@ export const DayEditorCardHeader = ({
           </button>
           {showActionsMenu && (
             <div id={`day-actions-${day.dayId}`} className="absolute right-0 top-12 z-10 min-w-[150px] rounded-xl border border-slate-200 bg-white p-1 shadow-lg sm:top-10">
-              {showBlameButton && <button
-                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-                type="button"
-                aria-label={`${blameOpen ? 'Hide' : 'Show'} line authors for ${day.dayId}`}
-                aria-pressed={blameOpen}
-                aria-controls={`day-blame-${day.dayId}`}
-                onClick={() => {
-                  setShowActionsMenu(false)
-                  onToggleBlame()
-                }}
-              ><BlameIcon />{blameOpen ? 'Hide authors' : 'Authors'}</button>}
               <button
                 className="flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50"
                 type="button"
@@ -280,12 +253,12 @@ const DayEditorCard = memo(({
   registerDayRef,
 }: DayEditorCardProps) => {
   const activeProvider = useSyncStore((state) => state.activeProvider)
-  const [blameOpen, setBlameOpen] = useState(false)
-  const showBlame = blameOpen && activeProvider === 'onedrive'
+  const showBlame = activeProvider === 'onedrive'
+  const loadAttribution = showBlame && shouldMountEditor
   const containerRef = useRef<HTMLDivElement | null>(null)
   const detailsRef = useRef<HTMLDivElement | null>(null)
   const [details, setDetails] = useState<{ group: BlameGroup; left: number; top: number; content: string } | null>(null)
-  const attribution = useDayAttribution(day.dayId, day.contentMd, day.updatedAt, showBlame)
+  const attribution = useDayAttribution(day.dayId, day.contentMd, day.updatedAt, loadAttribution)
   const openAuthorDetails = useCallback((group: BlameGroup, anchor: HTMLElement) => {
     const card = anchor.closest('.day-editor-card')?.getBoundingClientRect()
     if (!card) return
@@ -424,16 +397,6 @@ const DayEditorCard = memo(({
       }`}
     >
       <DayEditorCardHeader
-        showBlameButton={activeProvider === 'onedrive'}
-        blameOpen={showBlame}
-        onToggleBlame={() => {
-          if (!showBlame) {
-            onBlur(day.dayId)
-            if (!shouldMountEditor) onRequestEditorMount(day.dayId, 'start')
-          }
-          setDetails(null)
-          setBlameOpen(!showBlame)
-        }}
         day={day}
         isFuture={isFuture}
         isToday={isToday}
@@ -454,10 +417,10 @@ const DayEditorCard = memo(({
         </div>
       )}
       {attribution.loading && <span role="status" className="sr-only">Loading authors…</span>}
-      {attribution.failed && <span role="alert" className="sr-only">Could not load authors. Toggle authors to retry.</span>}
+      {attribution.failed && <span role="alert" className="sr-only">Could not load authors.</span>}
       {showBlame && details?.content === day.contentMd && <div ref={detailsRef}><DayBlameDetails {...details} onClose={() => setDetails(null)} /></div>}
       <div id={`day-blame-${day.dayId}`} className="mt-3 overflow-hidden rounded-xl">
-        {shouldMountEditor || showBlame ? (
+        {shouldMountEditor ? (
           <CodeMirror
             value={day.contentMd}
             extensions={editorExtensions}
