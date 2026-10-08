@@ -21,15 +21,17 @@ export const groupLineAttribution = (attribution: LineAttribution[], dayId: stri
   return groups
 }
 
-// Keep each author's randomly assigned pastel consistent across cards and edits.
-const authorColors = new Map<string | null, string>()
-const authorColor = (author: string | null) => {
-  let color = authorColors.get(author)
-  if (!color) {
-    color = `hsl(${Math.floor(Math.random() * 360)} 55% 94%)`
-    authorColors.set(author, color)
-  }
-  return color
+// Draw distinct hues before reusing the palette, keeping each author consistent.
+const AUTHOR_HUES = [8, 42, 85, 145, 185, 220, 265]
+const authorHues = new Map<string | null, number>()
+let availableHues = [...AUTHOR_HUES]
+const authorHue = (author: string | null) => {
+  const existing = authorHues.get(author)
+  if (existing !== undefined) return existing
+  if (!availableHues.length) availableHues = [...AUTHOR_HUES]
+  const [hue] = availableHues.splice(Math.floor(Math.random() * availableHues.length), 1)
+  authorHues.set(author, hue)
+  return hue
 }
 
 class Spacer extends GutterMarker {
@@ -48,7 +50,7 @@ class Badge extends GutterMarker {
     const label = [this.group.author || 'Unknown author', ...this.group.dates.map(formatDayTitle)].join(' · ')
     button.type = 'button'
     button.className = 'cm-blame-badge'
-    button.style.backgroundColor = authorColor(this.group.author)
+    button.style.setProperty('--blame-hue', String(authorHue(this.group.author)))
     button.textContent = authorInitials(this.group.author)
     button.title = label
     button.setAttribute('aria-label', label)
@@ -83,9 +85,9 @@ export const blameGutter = (dayId: string, attribution: LineAttribution[] | null
     '.cm-blame-gutter .cm-gutterElement': { padding: '0 4px', position: 'relative', boxSizing: 'border-box', overflow: 'visible' },
     '.cm-blame-spacer': { display: 'block', width: '28px' },
     '.cm-blame-badge': { display: 'block', width: '28px', height: '20px', margin: '0', padding: '0',
-      border: '1px solid var(--theme-border)', borderRadius: '5px', background: 'var(--theme-surface-soft)',
-      color: '#475569', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
-    '.cm-blame-badge:hover, .cm-blame-badge:focus-visible': { color: 'var(--theme-accent)', borderColor: 'var(--theme-accent)', outline: 'none' },
+      border: '1px solid var(--theme-border)', borderRadius: '5px', background: 'hsl(var(--blame-hue) var(--theme-blame-saturation) var(--theme-blame-lightness))',
+      color: 'var(--theme-blame-text)', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
+    '.cm-blame-badge:hover, .cm-blame-badge:focus-visible': { borderColor: 'var(--theme-accent)', outline: 'none' },
     '.cm-blame-rail::before': { content: '""', position: 'absolute', top: '0', bottom: '0', left: '17px',
       borderLeft: '1px solid var(--theme-border)' },
   })]
