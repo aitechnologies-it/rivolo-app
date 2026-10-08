@@ -218,9 +218,9 @@
     --theme-text-rgb: 244 247 251;
     --theme-text-soft: #d8e1ec;
     --theme-text-muted: #a4b3c4;
-    --theme-blame-saturation: 35%;
-    --theme-blame-lightness: 23%;
-    --theme-blame-text: #e2e8f0;
+    --theme-blame-saturation: 28%;
+    --theme-blame-lightness: 12%;
+    --theme-blame-text: #a4b3c4;
     --theme-text-subtle: #718095;
     --theme-title: #d7ecff;
     --theme-title-muted: #8aa3ba;
