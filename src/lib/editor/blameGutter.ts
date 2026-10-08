@@ -21,6 +21,17 @@ export const groupLineAttribution = (attribution: LineAttribution[], dayId: stri
   return groups
 }
 
+// Keep each author's randomly assigned pastel consistent across cards and edits.
+const authorColors = new Map<string | null, string>()
+const authorColor = (author: string | null) => {
+  let color = authorColors.get(author)
+  if (!color) {
+    color = `hsl(${Math.floor(Math.random() * 360)} 55% 94%)`
+    authorColors.set(author, color)
+  }
+  return color
+}
+
 class Spacer extends GutterMarker {
   toDOM() { const element = document.createElement('span'); element.className = 'cm-blame-spacer'; return element }
 }
@@ -37,6 +48,7 @@ class Badge extends GutterMarker {
     const label = [this.group.author || 'Unknown author', ...this.group.dates.map(formatDayTitle)].join(' · ')
     button.type = 'button'
     button.className = 'cm-blame-badge'
+    button.style.backgroundColor = authorColor(this.group.author)
     button.textContent = authorInitials(this.group.author)
     button.title = label
     button.setAttribute('aria-label', label)
@@ -72,7 +84,7 @@ export const blameGutter = (dayId: string, attribution: LineAttribution[] | null
     '.cm-blame-spacer': { display: 'block', width: '28px' },
     '.cm-blame-badge': { display: 'block', width: '28px', height: '20px', margin: '0', padding: '0',
       border: '1px solid var(--theme-border)', borderRadius: '5px', background: 'var(--theme-surface-soft)',
-      color: 'var(--theme-text-muted)', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
+      color: '#475569', font: '600 10px/18px system-ui, sans-serif', cursor: 'pointer' },
     '.cm-blame-badge:hover, .cm-blame-badge:focus-visible': { color: 'var(--theme-accent)', borderColor: 'var(--theme-accent)', outline: 'none' },
     '.cm-blame-rail::before': { content: '""', position: 'absolute', top: '0', bottom: '0', left: '17px',
       borderLeft: '1px solid var(--theme-border)' },
