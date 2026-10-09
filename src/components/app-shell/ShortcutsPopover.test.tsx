@@ -20,20 +20,20 @@ describe('ShortcutsPopover', () => {
   it('exposes its open state and dialog semantics', () => {
     renderPopover(true)
 
-    expect(screen.getByRole('button', { name: 'Shortcuts' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Help and shortcuts' })).toHaveAttribute(
       'aria-expanded',
       'true',
     )
-    expect(screen.getByRole('button', { name: 'Shortcuts' })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Help and shortcuts' })).toHaveAttribute(
       'aria-haspopup',
       'dialog',
     )
-    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Help and shortcuts' })).toHaveFocus()
   })
 
   it('closes with Escape and returns focus to its trigger', () => {
     const onToggle = renderPopover(true)
-    const trigger = screen.getByRole('button', { name: 'Shortcuts' })
+    const trigger = screen.getByRole('button', { name: 'Help and shortcuts' })
 
     fireEvent.keyDown(window, { key: 'Escape' })
 
@@ -43,7 +43,7 @@ describe('ShortcutsPopover', () => {
 
   it('can be opened from the keyboard', async () => {
     const onToggle = renderPopover(false)
-    const trigger = screen.getByRole('button', { name: 'Shortcuts' })
+    const trigger = screen.getByRole('button', { name: 'Help and shortcuts' })
 
     trigger.focus()
     await userEvent.keyboard('{Enter}')

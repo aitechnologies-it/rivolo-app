@@ -93,7 +93,7 @@ vi.mock('./app-shell/BottomTrayRow', () => ({
 vi.mock('./app-shell/ShortcutsPopover', () => ({
   default: ({ shortcutsRef }: { shortcutsRef: { current: HTMLDivElement | null } }) => (
     <div ref={shortcutsRef}>
-      <button type="button" aria-label="Shortcuts">
+      <button type="button" aria-label="Help and shortcuts">
         ?
       </button>
     </div>
@@ -372,9 +372,8 @@ describe('AppShell attention and stale tab states', () => {
     const { left, right } = getHeaderSlots()
 
     expect(screen.queryByRole('button', { name: 'Theme: System' })).not.toBeInTheDocument()
-    expect(left).toBeEmptyDOMElement()
+    expect(left).toContainElement(screen.getByRole('button', { name: 'Help and shortcuts' }))
     expect(right).toContainElement(settingsLink)
-    expect(screen.queryByRole('button', { name: 'Shortcuts' })).not.toBeInTheDocument()
   })
 
   it('shows mobile new chat in the left header slot during chat', async () => {
@@ -427,7 +426,7 @@ describe('AppShell attention and stale tab states', () => {
     expect(screen.queryByRole('button', { name: 'Theme: System' })).not.toBeInTheDocument()
     expect(right).toBeEmptyDOMElement()
     expect(screen.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Shortcuts' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Help and shortcuts' })).not.toBeInTheDocument()
   })
 
   it('keeps desktop home shortcuts, theme, and settings available', () => {
@@ -444,7 +443,7 @@ describe('AppShell attention and stale tab states', () => {
       </MemoryRouter>,
     )
 
-    const shortcutsButton = screen.getByRole('button', { name: 'Shortcuts' })
+    const shortcutsButton = screen.getByRole('button', { name: 'Help and shortcuts' })
     const themeButton = screen.getByRole('button', { name: 'Theme: System' })
     const settingsLink = screen.getByRole('link', { name: 'Settings' })
     const { left, right } = getHeaderSlots()
