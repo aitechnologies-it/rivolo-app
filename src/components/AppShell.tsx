@@ -103,7 +103,7 @@ export default function AppShell() {
   const showDesktopChatEdgeHandle = !isNarrowViewportMode && isDesktopChatModeWithMessages
   const showMobileNewChatButton =
     isHome && mode === 'chat' && isNarrowViewportMode && chatMessageCount > 0
-  const showDesktopShortcutsButton = isHome && !isNarrowViewportMode
+  const showShortcutsButton = isHome && !showMobileNewChatButton
   const showDesktopThemeButton = !isNarrowViewportMode && location.pathname !== '/settings'
   const syncDirection = syncOperation === 'push' ? 'up' : 'down'
   const setupNotices = attentionLoaded
@@ -421,7 +421,7 @@ export default function AppShell() {
               />
             </NavLink>
           )}
-          {showDesktopShortcutsButton && (
+          {showShortcutsButton && (
             <ShortcutsPopover
               shortcutsRef={shortcutsRef}
               showShortcuts={isHome && showShortcuts}
