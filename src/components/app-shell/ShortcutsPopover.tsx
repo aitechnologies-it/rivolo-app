@@ -69,18 +69,13 @@ export default function ShortcutsPopover({
                   <span aria-hidden="true" className="text-xl">×</span>
                 </button>
               </div>
-              <p>Aggiungi <code className="text-[var(--theme-tag)]">#progetto</code> alle note per ritrovare il lavoro sullo stesso progetto, anche in giorni diversi.</p>
               <ul className="list-disc space-y-2 pl-4">
-                <li><strong>Un progetto, un tag.</strong> Scegli un nome in minuscolo e senza spazi, come <code>#fcrf</code>, <code>#innorev</code>, <code>#preact</code> o <code>#lf</code>, e usa sempre lo stesso.</li>
-                <li><strong>Evita varianti e refusi.</strong> Alternare <code>#next</code> e <code>#nextai</code>, o scrivere <code>#fzrf</code> al posto di <code>#fcrf</code>, rende più difficile ritrovare tutte le note.</li>
-                <li><strong>Aggiungi tag trasversali.</strong> Usa <code>#followup</code>, <code>#bdev</code> o <code>#idea</code> insieme al tag del progetto per distinguere attività e argomenti.</li>
+                <li>Scrivi <code className="text-[var(--theme-tag)]">#progetto</code> nelle note.</li>
+                <li>Stesso progetto, <strong>stesso tag</strong>: minuscolo e senza spazi.</li>
+                <li>Aggiungi <code>#idea</code> o <code>#followup</code> per il tipo di nota.</li>
               </ul>
-              <div className="space-y-2 rounded-lg bg-[var(--theme-surface-soft)] p-3">
-                <p className="font-semibold">Esempi nelle note</p>
-                <code className="block whitespace-pre-wrap break-words">{'### call #fcrf con @edoardo\n- Decisione: inviare la bozza.\n- [ ] @caterina inviare bozza #fcrf #followup\n- [x] verificare deploy #rivolo'}</code>
-              </div>
-              <p><code>###</code> separa call e sessioni; <code>@nome</code> indica le persone; <code>- [ ]</code> è un’attività aperta, <code>- [x]</code> una completata. Per le attività, scrivi un verbo e un oggetto chiari.</p>
-              <p>Cerca <code>#fcrf</code> con <strong>Find</strong> oppure chiedi all’AI: «Quali attività sono aperte per #fcrf?».</p>
+              <code className="block break-words rounded-lg bg-[var(--theme-surface-soft)] p-3">Inviare bozza #fcrf #followup</code>
+              <p>Cerca <code>#fcrf</code> in <strong>Find</strong> per ritrovare le note.</p>
             </section>
             <h2 className="border-t border-[var(--theme-border)] pt-4 font-semibold text-[var(--theme-text)]">Keyboard shortcuts</h2>
             <div className="space-y-2">
