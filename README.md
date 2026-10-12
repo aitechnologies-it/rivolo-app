@@ -67,6 +67,10 @@ The company brain in `public/ait-brain.svg` comes from the supplied AI Technolog
 
 > Edit target: the provided existing Rivolo app icon. Create its inverse colourway for the company's companion version. Change only colours: replace the blue square background with a pure white background, and recolour the existing white winding stream shape into Rivolo's cyan blue (#22b3ff, gently deepening to #169fe6). Preserve the EXACT stream silhouette, curves, location, proportions, thin upper-left swoosh and the softly fading trailing stream layers from the original. Full-bleed square app icon, sharp clean edges, no rounded frame baked into the image, no shadows around the square, no text, no letters, no AIT badge, no brain, no additional symbols. It must be recognizably the SAME Rivolo stream icon with white and blue exchanged. Output a square high-resolution PNG suitable for 512px, 192px and 180px exports.
 
+## Hashtag suggestions
+
+While writing a note, type a hashtag prefix such as `#ne` to see matching tags already used in the notebook. Choose with Up/Down and Enter, Tab, or a click/tap; Escape dismisses the suggestions. New tags remain free-form. Suggestions use a derived SQLite index of all locally stored days, plus the current unsaved draft. Import, sync, date changes and deletions mark affected days for incremental reindexing. The index is rebuilt from notes as needed; it does not rename tags or create a fixed project catalog. Case and Unicode normalization deduplicate suggestions while preserving the original note text.
+
 ## Project checks
 
 ```bash
