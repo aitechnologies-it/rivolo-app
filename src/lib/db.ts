@@ -130,7 +130,7 @@ export const getDatabase = async () => {
       const db = openSerializedDatabase(sqlite, stored ? new Uint8Array(stored) : null)
       const schema = ensureDatabaseSchema(db)
       ftsAvailable = schema.ftsAvailable
-      if (schema.ftsRebuilt) scheduleSave(db)
+      if (schema.ftsRebuilt || schema.hashtagIndexCreated) scheduleSave(db)
       return db
     })().catch((error) => {
       dbPromise = null
