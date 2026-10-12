@@ -2,6 +2,7 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { Decoration, EditorView, ViewPlugin, ViewUpdate, type DecorationSet } from '@codemirror/view'
 import { RangeSetBuilder, type Extension } from '@codemirror/state'
+import { createNoteTokenRegex } from './noteTokens'
 
 const highlightStyle = HighlightStyle.define([
   {
@@ -31,7 +32,7 @@ const highlightStyle = HighlightStyle.define([
 
 export const findTagHighlightRanges = (text: string) => {
   const ranges: Array<{ from: number; to: number; className: string }> = []
-  const tagRegex = /(^|[^\p{L}\p{M}\p{N}_])([#@][\p{L}\p{M}\p{N}_/-]+)/gu
+  const tagRegex = createNoteTokenRegex('#@')
   let match = tagRegex.exec(text)
 
   while (match) {
