@@ -11,6 +11,7 @@ import { useSyncStore } from '../../store/useSyncStore'
 import { DayBlameDetails } from './DayBlame'
 import { useDayAttribution } from './useDayAttribution'
 import { blameGutter, type BlameGroup } from '../../lib/editor/blameGutter'
+import { hashtagCompletion } from '../../lib/editor/hashtagCompletion'
 
 type DayEditorCardProps = {
   day: Day
@@ -281,6 +282,7 @@ const DayEditorCard = memo(({
   const authorsExtension = useMemo(() => activeProvider === 'onedrive' ? blameGutter(day.dayId, attribution.attribution, openAuthorDetails) : [],
     [activeProvider, day.dayId, attribution.attribution, openAuthorDetails])
   const searchHighlight = useMemo(() => createHighlightPlugin(searchQuery), [searchQuery])
+  const hashtagSuggestions = useMemo(() => hashtagCompletion(day.dayId), [day.dayId])
   const quoteHighlight = useMemo(() => (quote ? createHighlightPlugin(quote) : null), [quote])
   const previewContent = useMemo(() => {
     const trimmed = day.contentMd.trim()
@@ -355,6 +357,7 @@ const DayEditorCard = memo(({
       navigationKeymap,
       todoKeymap,
       todoPointerHandler,
+      hashtagSuggestions,
       ...editorHighlights,
       authorsExtension,
     ]
@@ -369,6 +372,7 @@ const DayEditorCard = memo(({
     authorsExtension,
     clearActiveLine,
     editorTheme,
+    hashtagSuggestions,
     markdownExtension,
     navigationKeymap,
     quoteHighlight,
@@ -430,7 +434,7 @@ const DayEditorCard = memo(({
             }}
             onBlur={(event) => void onBlur(day.dayId, event.nativeEvent)}
             onCreateEditor={(view) => registerEditor(day.dayId, view)}
-            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLineGutter: false }}
+            basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLineGutter: false, autocompletion: false }}
           />
         ) : (
           <button
