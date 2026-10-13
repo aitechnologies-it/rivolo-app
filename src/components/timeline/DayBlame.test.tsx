@@ -7,14 +7,43 @@ import { writeNotebookAuthors, writeNotebookAttribution } from '../../lib/oneDri
 import { exportMarkdown } from '../../lib/markdown'
 import { groupLineAttribution } from '../../lib/editor/blameGutter'
 
-const mocks = vi.hoisted(() => ({ state: vi.fn() }))
+const mocks = vi.hoisted(() => ({ state: vi.fn(), dailyState: vi.fn() }))
 vi.mock('../../lib/oneDriveState', () => ({ getOneDriveState: mocks.state }))
+vi.mock('../../lib/oneDriveDailyState', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../lib/oneDriveDailyState')>(),
+  getDailyState: mocks.dailyState,
+}))
 vi.mock('../../store/useSyncStore', () => ({ useSyncStore: (selector: (state: unknown) => unknown) => selector({ status: { lastSyncAt: 1 } }) }))
 const dayId = '2026-10-01'
 const notebook = (contentMd: string) => exportMarkdown([{ dayId, contentMd, humanTitle: 'Thursday', createdAt: 0, updatedAt: 0 }])
 const timestamp = new Date(2026, 9, 2, 12).getTime()
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => { vi.clearAllMocks(); mocks.dailyState.mockResolvedValue(null) })
 describe('day author gutter data', () => {
+  it.each([null, { baseline: null }])('attributes a new daily note before its first push (checkpoint: %j)', async (checkpoint) => {
+    mocks.state.mockResolvedValue({ folderId: 'notebook', accountId: 'alice', targetGeneration: 1, mergeBaseContent: null, accountName: 'Alice' })
+    mocks.dailyState.mockResolvedValue(checkpoint)
+    const { result, rerender } = renderHook(({ content }) => useDayAttribution(dayId, content, timestamp, true),
+      { initialProps: { content: 'New note' } })
+    await waitFor(() => expect(result.current.attribution).toEqual([{ author: 'Alice', date: '2026-10-02' }]))
+    // Further local typing needs neither a cloud request nor a first push.
+    rerender({ content: 'New note\nMore text' })
+    await waitFor(() => expect(result.current.attribution).toEqual([
+      { author: 'Alice', date: '2026-10-02' }, { author: 'Alice', date: '2026-10-02' },
+    ]))
+  })
+  it('preserves unknown historical lines in a daily baseline and attributes only local changes', async () => {
+    mocks.state.mockResolvedValue({ folderId: 'notebook', mergeBaseContent: null, accountName: 'Alice' })
+    mocks.dailyState.mockResolvedValue({ baseline: notebook('Historical note\nOld text') })
+    const { result } = renderHook(() => useDayAttribution(dayId, 'Historical note\nNew text', timestamp, true))
+    await waitFor(() => expect(result.current.attribution).toEqual([
+      { author: null, date: null }, { author: 'Alice', date: '2026-10-02' },
+    ]))
+  })
+  it('keeps a new daily note unknown when the account name is unavailable', async () => {
+    mocks.state.mockResolvedValue({ folderId: 'notebook', mergeBaseContent: null, accountName: null })
+    const { result } = renderHook(() => useDayAttribution(dayId, 'New note', timestamp, true))
+    await waitFor(() => expect(result.current.attribution).toEqual([{ author: null, date: null }]))
+  })
   it('loads authors only when the gutter is enabled and previews unsynced changes', async () => {
     const mergeBaseContent = await writeNotebookAuthors(notebook('First\nSecond'), new Map([[dayId, ['Bob', 'Carol']]]))
     mocks.state.mockResolvedValue({ mergeBaseContent, accountName: 'Alice' })

@@ -19,7 +19,9 @@ export function useDayAttribution(dayId: string, content: string, editedAt: numb
       const baseline = dayState?.baseline ?? state.mergeBaseContent ?? ''
       const baseDay = parseMarkdown(baseline).days.find((day) => day.dayId === dayId)
       const attribution = await readNotebookAttribution(baseline, dayId)
-      const author = !dayState?.baseline && state.mergeBaseContent === null ? null : state.accountName
+      // Daily sync attributes new local days from an empty baseline before their first push.
+      // Legacy notebooks without a baseline still have unknown historical authors.
+      const author = !target && state.mergeBaseContent === null ? null : state.accountName
       const aligned = alignLineAttribution(baseDay?.contentMd ?? '', content, attribution.get(dayId) ?? [],
         { author, date: author ? editDayId(editedAt) : null })
       if (!cancelled) setResult({ key, attribution: aligned })
