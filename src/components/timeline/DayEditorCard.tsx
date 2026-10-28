@@ -261,13 +261,17 @@ const DayEditorCard = memo(({
   const [details, setDetails] = useState<{ group: BlameGroup; left: number; top: number; content: string } | null>(null)
   const attribution = useDayAttribution(day.dayId, day.contentMd, day.updatedAt, loadAttribution)
   const openAuthorDetails = useCallback((group: BlameGroup, anchor: HTMLElement) => {
+    const editor = anchor.closest('.cm-editor')
+    const view = editor ? EditorView.findFromDOM(editor as HTMLElement) : null
+    if (!view) return
+    const content = view.state.doc.toString()
     const card = anchor.closest('.day-editor-card')?.getBoundingClientRect()
     if (!card) return
     const rect = anchor.getBoundingClientRect()
-    setDetails((current) => current?.group.start === group.start && current.content === day.contentMd ? null : {
-      group, content: day.contentMd, left: Math.max(8, Math.min(rect.left - card.left, card.width - 232)), top: rect.bottom - card.top + 4,
+    setDetails((current) => current?.group.start === group.start && current.content === content ? null : {
+      group, content, left: Math.max(8, Math.min(rect.left - card.left, card.width - 232)), top: rect.bottom - card.top + 4,
     })
-  }, [day.contentMd])
+  }, [])
   useEffect(() => {
     if (!details) return
     const dismiss = (event: PointerEvent) => {
