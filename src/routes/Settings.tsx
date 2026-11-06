@@ -9,6 +9,7 @@ import { appIdentities } from '../lib/appIdentity'
 import DataSection, { type CloudVersionHistory } from '../components/settings/DataSection'
 import LlmSection from '../components/settings/LlmSection'
 import AttentionBanner from '../components/settings/AttentionBanner'
+import McpOAuthPendingBanner from '../components/settings/McpOAuthPendingBanner'
 import SyncSection from '../components/settings/SyncSection'
 import { exportMarkdownFromDb, importMarkdownToDb } from '../lib/importExport'
 import { getBodyFontChoice, getFontPreset } from '../lib/fonts'
@@ -28,6 +29,7 @@ import {
   useAgentAccess,
 } from './settings/useAgentAccess'
 import { useDatabasePersistFailure } from '../hooks/useDatabasePersistFailure'
+import { useMcpOAuthPending } from './settings/useMcpOAuthPending'
 import { useSyncProviderActions } from './settings/useSyncProviderActions'
 import { useDaysStore } from '../store/useDaysStore'
 import { useDropboxStore } from '../store/useDropboxStore'
@@ -57,6 +59,7 @@ export default function Settings() {
   const updateWallpaper = useSettingsStore((state) => state.updateWallpaper)
   const updateHighlightInputMode = useSettingsStore((state) => state.updateHighlightInputMode)
   const updateAutocorrection = useSettingsStore((state) => state.updateAutocorrection)
+  const updateAnimations = useSettingsStore((state) => state.updateAnimations)
   const updateFontPreset = useSettingsStore((state) => state.updateFontPreset)
   const updateTitleFont = useSettingsStore((state) => state.updateTitleFont)
   const updateBodyFontChoice = useSettingsStore((state) => state.updateBodyFontChoice)
@@ -73,6 +76,7 @@ export default function Settings() {
   const wallpaper = useSettingsStore((state) => state.wallpaper)
   const highlightInputMode = useSettingsStore((state) => state.highlightInputMode)
   const autocorrection = useSettingsStore((state) => state.autocorrection)
+  const animations = useSettingsStore((state) => state.animations)
   const fontPreference = useSettingsStore((state) => state.fontPreference)
   const bodyFont = useSettingsStore((state) => state.bodyFont)
   const monospaceFont = useSettingsStore((state) => state.monospaceFont)
@@ -124,6 +128,7 @@ export default function Settings() {
   const [googleDriveFileNameDraft, setGoogleDriveFileNameDraft] = useState<string | null>(null)
   const [initialLoadDone, setInitialLoadDone] = useState(false)
   const agentAccess = useAgentAccess(online)
+  const oauthPending = useMcpOAuthPending(online)
 
   const { provider: selectedSyncProvider, selectProvider: setSyncProviderDraft, openPanel: openSyncPanel, openRequest: syncOpenRequest } = useSyncPanelNavigation(activeProvider, initialLoadDone)
   const settingsView = useSettingsStore((state) => state.settingsView)
@@ -391,6 +396,9 @@ export default function Settings() {
       loadProviderStates,
       loadSyncState,
       setActiveProvider: setActiveSyncProvider,
+      onConnected: async () => {
+        await oauthPending.continueAfterEnable()
+      },
     })
 
   const handleDisconnectWithAgentSafety = async () => {
@@ -410,12 +418,17 @@ export default function Settings() {
   }
 
   const handleEnableAgentAccess = async () => {
-    if (selectedSyncProvider === 'dropbox') {
-      await agentAccess.enable({ provider: 'dropbox', path: savedDropboxPath })
-      return
-    }
-    if (selectedSyncProvider !== 'google-drive' || !googleDriveFileId) return
-    await agentAccess.enable({ provider: 'google-drive', fileId: googleDriveFileId })
+    // Agent access is not available for OneDrive; only Dropbox and Google Drive enable it.
+    const enabled =
+      selectedSyncProvider === 'dropbox'
+        ? await agentAccess.enable({ provider: 'dropbox', path: savedDropboxPath })
+        : selectedSyncProvider === 'google-drive' && googleDriveFileId
+          ? await agentAccess.enable({
+              provider: 'google-drive',
+              fileId: googleDriveFileId,
+            })
+          : false
+    if (enabled) await oauthPending.continueAfterEnable()
   }
 
   const handleDisableAgentAccess = async () => {
@@ -471,6 +484,19 @@ export default function Settings() {
             }}
           />
         </header>
+
+        {(oauthPending.view.state === 'pending' ||
+          oauthPending.view.state === 'restart' ||
+          oauthPending.view.state === 'error') && (
+          <McpOAuthPendingBanner
+            view={oauthPending.view}
+            onContinue={oauthPending.continueNow}
+            onCancel={oauthPending.cancel}
+            onRetry={() => {
+              void oauthPending.load()
+            }}
+          />
+        )}
 
         {initialLoadDone &&
           attentionItems.map((item) => (
@@ -581,6 +607,7 @@ export default function Settings() {
           wallpaper={wallpaper}
           highlightInputMode={highlightInputMode}
           autocorrection={autocorrection}
+          animations={animations}
           fontPreset={fontPreset}
           titleFont={titleFont}
           bodyFontChoice={bodyFontChoice}
@@ -595,6 +622,9 @@ export default function Settings() {
           }}
           onAutocorrectionChange={(enabled) => {
             void updateAutocorrection(enabled)
+          }}
+          onAnimationsChange={(enabled) => {
+            void updateAnimations(enabled)
           }}
           onFontPresetChange={(value) => {
             void updateFontPreset(value)

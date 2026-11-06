@@ -24,12 +24,14 @@ export default function ShortcutsPopover({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
       onToggle()
       triggerRef.current?.focus()
     }
 
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [onToggle, showShortcuts])
 
   return (
@@ -101,6 +103,13 @@ export default function ShortcutsPopover({
                   <span className="text-slate-400">-&gt;</span>
                   <span>Find</span>
                 </div>
+                <div className="grid grid-cols-[auto_auto_1fr] items-center gap-2 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <kbd className="kbd">↓</kbd>
+                  </span>
+                  <span className="text-slate-400">-&gt;</span>
+                  <span>From search, go to the results</span>
+                </div>
               </div>
             </div>
             <div className="space-y-2">
@@ -139,7 +148,7 @@ export default function ShortcutsPopover({
                     <kbd className="kbd">S</kbd>
                   </span>
                   <span className="text-slate-400">-&gt;</span>
-                  <span>Show/hide sidebar</span>
+                  <span>Show/hide chat</span>
                 </div>
                 <div className="grid grid-cols-[auto_auto_1fr] items-center gap-2 font-semibold">
                   <span className="flex items-center gap-1">
@@ -166,7 +175,23 @@ export default function ShortcutsPopover({
                   <span className="text-slate-400">-&gt;</span>
                   <span>Toggle/Create todo</span>
                 </div>
+                <div className="grid grid-cols-[auto_auto_1fr] items-center gap-2 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <kbd className="kbd">{primaryModifierLabel}</kbd>
+                    <span className="text-slate-400">+</span>
+                    <kbd className="kbd">Shift</kbd>
+                    <span className="text-slate-400">+</span>
+                    <kbd className="kbd">Enter</kbd>
+                  </span>
+                  <span className="text-slate-400">-&gt;</span>
+                  <span>Cancel/Reopen todo</span>
+                </div>
               </div>
+              <p className="text-xs text-slate-500">
+                Todo markers: [ ] open, [x] completed, [-] cancelled.
+                <br />
+                Click to complete or reopen; right-click to cancel or reopen.
+              </p>
             </div>
           </div>
         </div>

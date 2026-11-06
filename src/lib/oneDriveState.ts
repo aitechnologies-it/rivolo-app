@@ -1,4 +1,5 @@
-import { getJsonSetting, setJsonSetting } from './settingsRepository'
+import { getJsonSetting, updateJsonSetting } from './settingsRepository'
+import { executeSql, queryFirstRow, type RivoloDatabase } from './sqliteRuntime'
 
 export type OneDriveState = {
   connected: boolean
@@ -54,11 +55,17 @@ const readOneDriveState = async () => {
 const enqueueOneDriveStateWrite = async <T>(
   mutator: (current: OneDriveState) => { next: OneDriveState; result: T },
 ) => {
+  // Read and write in one transaction so a dirty mark made inside a note write
+  // (markOneDriveLocalDirtyInDatabase) is not overwritten by a queued update.
   const run = async () => {
-    const current = await readOneDriveState()
-    const { next, result } = mutator(current)
-    await setJsonSetting('onedrive.state', next)
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
+    let result!: T
+    await updateJsonSetting<unknown>('onedrive.state', (stored) => {
+      const current = { ...DEFAULT_STATE, ...(stored && typeof stored === 'object' ? stored : {}) } as OneDriveState
+      const { next, result: nextResult } = mutator(current)
+      result = nextResult
+      return next
+    })
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
     return result
   }
 
@@ -107,6 +114,29 @@ export const updateOneDriveFilePath = async (filePath: string) => {
 
     return { next, result: next }
   })
+}
+
+// Legacy single-file notebooks use this flag; daily notebooks derive pending
+// days from the onedrive_day_changes journal instead.
+export const markOneDriveLocalDirtyInDatabase = (db: RivoloDatabase) => {
+  const row = queryFirstRow<{ value: string }>(db, 'SELECT value FROM settings WHERE key = ? LIMIT 1', ['onedrive.state'])
+  let stored: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = row ? JSON.parse(row.value) : null
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) stored = parsed as Record<string, unknown>
+  } catch {
+    stored = {}
+  }
+  const state = { ...DEFAULT_STATE, ...stored } as OneDriveState
+  const next = {
+    ...state,
+    localDirty: true,
+    localRevision: (Number.isSafeInteger(state.localRevision) ? state.localRevision : 0) + 1,
+  }
+  executeSql(db, 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [
+    'onedrive.state',
+    JSON.stringify(next),
+  ])
 }
 
 export const markOneDriveLocalDirty = async () => {
