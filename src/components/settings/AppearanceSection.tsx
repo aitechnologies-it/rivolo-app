@@ -21,6 +21,7 @@ type AppearanceSectionProps = {
   wallpaper: 'none' | 'thoughts-light' | 'thoughts-high'
   highlightInputMode: boolean
   autocorrection: boolean
+  animations: boolean
   fontPreset: FontPreset | 'custom'
   titleFont: TitleFont
   bodyFontChoice: BodyFontChoice
@@ -30,13 +31,14 @@ type AppearanceSectionProps = {
   onWallpaperChange: (value: 'none' | 'thoughts-light' | 'thoughts-high') => void
   onHighlightInputModeChange: (enabled: boolean) => void
   onAutocorrectionChange: (enabled: boolean) => void
+  onAnimationsChange: (enabled: boolean) => void
   onFontPresetChange: (preset: FontPreset) => void
   onTitleFontChange: (titleFont: TitleFont) => void
   onBodyFontChoiceChange: (choice: BodyFontChoice) => void
 }
 
 const selectClass =
-  'min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-slate-400'
+  'min-h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none [@media(pointer:coarse)]:text-base transition focus:border-slate-400'
 
 export default function AppearanceSection({
   themePreference,
@@ -44,6 +46,7 @@ export default function AppearanceSection({
   wallpaper,
   highlightInputMode,
   autocorrection,
+  animations,
   fontPreset,
   titleFont,
   bodyFontChoice,
@@ -53,6 +56,7 @@ export default function AppearanceSection({
   onWallpaperChange,
   onHighlightInputModeChange,
   onAutocorrectionChange,
+  onAnimationsChange,
   onFontPresetChange,
   onTitleFontChange,
   onBodyFontChoiceChange,
@@ -237,9 +241,10 @@ export default function AppearanceSection({
             <div className="-mx-3">
               <SettingsToggle
                 checked={highlightInputMode}
-                label="Highlight input mode"
+                label="Highlight input mode (mobile only)"
                 onChange={onHighlightInputModeChange}
               />
+              <SettingsToggle checked={animations} label="Animations" onChange={onAnimationsChange} />
             </div>
           </div>
         )}

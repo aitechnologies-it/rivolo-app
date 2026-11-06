@@ -13,9 +13,9 @@ const providerState = vi.hoisted(() => ({ getActiveProviderStatus: vi.fn() }))
 vi.mock('../../lib/oneDriveEvents', () => events)
 vi.mock('../../lib/sync', () => providerState)
 const syncActions = vi.hoisted(() => ({
-  blockedPushMessage: vi.fn(),
   pullFromSyncAndRefresh: vi.fn(),
   pushToSyncAndRefresh: vi.fn(),
+  recordBlockedPush: vi.fn(),
   recordSyncAttention: vi.fn(),
   clearSyncIssue: vi.fn(),
 }))
@@ -28,7 +28,6 @@ describe('useAutoSync tab coordination', () => {
     vi.clearAllMocks()
     coordinator.getTabSyncBlockReason.mockReturnValue(null)
     providerState.getActiveProviderStatus.mockResolvedValue({ localDirty: false })
-    syncActions.blockedPushMessage.mockReturnValue('Remote changed.')
     syncActions.pullFromSyncAndRefresh.mockResolvedValue({ status: 'noop' })
     syncActions.pushToSyncAndRefresh.mockResolvedValue({ status: 'pushed' })
   })
@@ -360,9 +359,8 @@ describe('useAutoSync tab coordination', () => {
     )
 
     await waitFor(() => {
-      expect(syncActions.recordSyncAttention).toHaveBeenCalledWith('push', 'Remote changed.')
+      expect(syncActions.recordBlockedPush).toHaveBeenCalledWith('remote_changed')
     })
-    expect(syncActions.blockedPushMessage).toHaveBeenCalledWith('remote_changed')
   })
 
   it('queues one reconciliation when another trigger arrives in flight', async () => {

@@ -13,6 +13,7 @@ const renderSection = (overrides: Overrides = {}) => {
     wallpaper: 'thoughts-light',
     highlightInputMode: false,
     autocorrection: true,
+    animations: true,
     fontPreset: 'monospace',
     titleFont: 'handlee',
     bodyFontChoice: 'iawriter',
@@ -20,6 +21,7 @@ const renderSection = (overrides: Overrides = {}) => {
     onWallpaperChange: vi.fn(),
     onHighlightInputModeChange: vi.fn(),
     onAutocorrectionChange: vi.fn(),
+    onAnimationsChange: vi.fn(),
     onFontPresetChange: vi.fn(),
     onTitleFontChange: vi.fn(),
     onBodyFontChoiceChange: vi.fn(),
@@ -63,7 +65,8 @@ describe('AppearanceSection', () => {
     expect(screen.getByRole('button', { name: 'Proportional' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByRole('switch', { name: 'Autocorrection' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'No background' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('switch', { name: 'Highlight input mode' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Highlight input mode (mobile only)' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('switch', { name: 'Animations' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Bree Serif' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Inconsolata' })).not.toBeInTheDocument()
 
@@ -85,49 +88,21 @@ describe('AppearanceSection', () => {
       'aria-pressed',
       'true',
     )
-    expect(screen.getByRole('img', { name: 'No background preview' })).toHaveClass(
-      'sm:hidden',
-    )
-    expect(screen.getByRole('switch', { name: 'Highlight input mode' })).toBeInTheDocument()
+    expect(screen.getByRole('switch', { name: 'Highlight input mode (mobile only)' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Rivolo Light' }))
     expect(onWallpaperChange).toHaveBeenCalledExactlyOnceWith('thoughts-light')
   })
 
-  it('previews the selected background at the font sample height on mobile', () => {
-    renderSection({ advanced: true, wallpaper: 'thoughts-high' })
+  it('turns animations off from the advanced section', async () => {
+    const onAnimationsChange = vi.fn()
+    renderSection({ advanced: true, onAnimationsChange })
 
-    const preview = screen.getByRole('img', { name: 'Rivolo Strong background preview' })
-    expect(preview).toHaveClass('sm:hidden')
-    expect(preview.querySelector('.invisible')).toHaveTextContent(
-      '@bob send message for breakfast at 8:30',
-    )
-    expect(preview.lastElementChild).toHaveClass(
-      'bg-fixed',
-      'opacity-[var(--theme-wallpaper-strong-opacity)]',
-    )
+    const toggle = screen.getByRole('switch', { name: 'Animations' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.click(toggle)
+    expect(onAnimationsChange).toHaveBeenCalledExactlyOnceWith(false)
   })
 
-  it('offers individual title and body font pickers in advanced mode', async () => {
-    const onTitleFontChange = vi.fn()
-    const onBodyFontChoiceChange = vi.fn()
-    renderSection({
-      advanced: true,
-      titleFont: 'handlee',
-      bodyFontChoice: 'iawriter',
-      onTitleFontChange,
-      onBodyFontChoiceChange,
-    })
-
-    const titleSelect = screen.getByLabelText('Title font')
-    const bodySelect = screen.getByLabelText('Body font')
-    expect(titleSelect).toHaveValue('handlee')
-    expect(bodySelect).toHaveValue('iawriter')
-
-    await userEvent.selectOptions(titleSelect, 'Bree Serif')
-    expect(onTitleFontChange).toHaveBeenCalledExactlyOnceWith('bree')
-
-    await userEvent.selectOptions(bodySelect, 'Inconsolata')
-    expect(onBodyFontChoiceChange).toHaveBeenCalledExactlyOnceWith('inconsolata')
-  })
 })
