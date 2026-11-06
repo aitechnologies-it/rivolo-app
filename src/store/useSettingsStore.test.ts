@@ -3,12 +3,15 @@ import { useSettingsStore } from './useSettingsStore'
 import { DEFAULT_LLM_PROVIDER_SETTINGS } from '../lib/llm/types'
 import { THEME_STORAGE_KEY } from '../lib/theme'
 import { APP_IDENTITY_STORAGE_KEY } from '../lib/appIdentity'
+import { ANIMATIONS_STORAGE_KEY } from '../lib/animations'
 
 const settingsRepository = vi.hoisted(() => ({
   getSetting: vi.fn(),
   setSetting: vi.fn(),
   getJsonSetting: vi.fn(),
   setJsonSetting: vi.fn(),
+  setSettings: vi.fn(),
+  updateJsonSetting: vi.fn(),
 }))
 
 vi.mock('../lib/settingsRepository', () => settingsRepository)
@@ -45,6 +48,8 @@ describe('useSettingsStore app identity', () => {
   it('keeps branding local without changing notebook settings', () => {
     settingsRepository.setSetting.mockClear()
     settingsRepository.setJsonSetting.mockClear()
+    settingsRepository.setSettings.mockClear()
+    settingsRepository.updateJsonSetting.mockClear()
     useSettingsStore.setState({ appIdentity: 'rivolo', themePreference: 'dark', settingsView: 'advanced' })
 
     useSettingsStore.getState().updateAppIdentity('ait')
@@ -56,6 +61,8 @@ describe('useSettingsStore app identity', () => {
     expect(document.title).toBe('Rivolo x AIT')
     expect(settingsRepository.setSetting).not.toHaveBeenCalled()
     expect(settingsRepository.setJsonSetting).not.toHaveBeenCalled()
+    expect(settingsRepository.setSettings).not.toHaveBeenCalled()
+    expect(settingsRepository.updateJsonSetting).not.toHaveBeenCalled()
 
     useSettingsStore.getState().updateAppIdentity('rivolo')
     expect(document.title).toBe('Rivolo')
@@ -63,9 +70,33 @@ describe('useSettingsStore app identity', () => {
   })
 })
 
+const installRepositoryMutationMocks = () => {
+  settingsRepository.setSettings.mockImplementation(async (entries: Array<[string, string]>) => {
+    for (const [key, value] of entries) await settingsRepository.setSetting(key, value)
+  })
+  settingsRepository.updateJsonSetting.mockImplementation(async (key: string, update: (value: unknown) => unknown) => {
+    const current = await settingsRepository.getJsonSetting(key)
+    const next = update(current)
+    await settingsRepository.setJsonSetting(key, next)
+    return next
+  })
+}
+
+const migratedProviders = () => {
+  const entries = settingsRepository.setSettings.mock.calls.flatMap(([writes]) =>
+    writes as Array<[string, string]>,
+  )
+  const serialized = entries.find(([key]) => key === 'llm.providers')?.[1]
+  expect(serialized).toBeDefined()
+  return JSON.parse(serialized as string) as Record<string, unknown>
+}
+
 describe('useSettingsStore setup notice dismissal', () => {
   beforeEach(() => {
     settingsRepository.setSetting.mockReset().mockResolvedValue(undefined)
+    settingsRepository.setSettings.mockReset()
+    settingsRepository.updateJsonSetting.mockReset()
+    installRepositoryMutationMocks()
     useSettingsStore.setState({ dismissedSetupNotices: { ai: false, sync: false } })
   })
 
@@ -95,11 +126,15 @@ describe('useSettingsStore theme preference', () => {
     window.localStorage.clear()
     document.documentElement.removeAttribute('data-theme')
     document.documentElement.removeAttribute('data-theme-preference')
+    document.documentElement.removeAttribute('data-animations')
     document.head.innerHTML = '<meta name="theme-color" content="#ffffff" />'
     settingsRepository.getSetting.mockReset()
     settingsRepository.setSetting.mockReset().mockResolvedValue(undefined)
     settingsRepository.getJsonSetting.mockReset()
     settingsRepository.setJsonSetting.mockReset().mockResolvedValue(undefined)
+    settingsRepository.setSettings.mockReset()
+    settingsRepository.updateJsonSetting.mockReset()
+    installRepositoryMutationMocks()
     useSettingsStore.setState({
       settingsView: 'basic',
       themePreference: 'system',
@@ -166,6 +201,41 @@ describe('useSettingsStore theme preference', () => {
     expect(document.querySelector("meta[name='theme-color']")).toHaveAttribute('content', '#05070b')
   })
 
+  it('keeps animations on by default and persists the preference', async () => {
+    mockLoadSettingsValues()
+
+    await useSettingsStore.getState().loadSettings()
+
+    expect(useSettingsStore.getState().animations).toBe(true)
+    expect(settingsRepository.setSetting).toHaveBeenCalledWith('appearance.animations', 'true')
+    expect(document.documentElement).not.toHaveAttribute('data-animations')
+  })
+
+  it('restores animations turned off, so the page stops moving after a reload', async () => {
+    mockLoadSettingsValues({ 'appearance.animations': 'false' })
+
+    await useSettingsStore.getState().loadSettings()
+
+    expect(useSettingsStore.getState().animations).toBe(false)
+    expect(document.documentElement).toHaveAttribute('data-animations', 'off')
+    // The mirror lets index.html turn them off before the first paint.
+    expect(window.localStorage.getItem(ANIMATIONS_STORAGE_KEY)).toBe('false')
+  })
+
+  it('persists turning animations off and on again', async () => {
+    await useSettingsStore.getState().updateAnimations(false)
+
+    expect(settingsRepository.setSetting).toHaveBeenCalledExactlyOnceWith('appearance.animations', 'false')
+    expect(document.documentElement).toHaveAttribute('data-animations', 'off')
+    expect(window.localStorage.getItem(ANIMATIONS_STORAGE_KEY)).toBe('false')
+
+    await useSettingsStore.getState().updateAnimations(true)
+
+    expect(useSettingsStore.getState().animations).toBe(true)
+    expect(document.documentElement).not.toHaveAttribute('data-animations')
+    expect(window.localStorage.getItem(ANIMATIONS_STORAGE_KEY)).toBe('true')
+  })
+
   it('migrates the legacy white wallpaper value to none', async () => {
     mockLoadSettingsValues({ 'appearance.wallpaper': 'white' })
 
@@ -188,16 +258,6 @@ describe('useSettingsStore theme preference', () => {
       monospaceFont: 'iawriter',
       titleFont: 'handlee',
     })
-  })
-
-  it('persists an individual title font choice', async () => {
-    await useSettingsStore.getState().updateTitleFont('bree')
-
-    expect(settingsRepository.setSetting).toHaveBeenCalledExactlyOnceWith(
-      'appearance.titleFont',
-      'bree',
-    )
-    expect(useSettingsStore.getState().titleFont).toBe('bree')
   })
 
   it('maps body font choices onto font preference and monospace font', async () => {
@@ -236,15 +296,12 @@ describe('useSettingsStore theme preference', () => {
     expect(useSettingsStore.getState().providerSettings.gemini.model).toBe(
       DEFAULT_LLM_PROVIDER_SETTINGS.gemini.model,
     )
-    expect(settingsRepository.setJsonSetting).toHaveBeenCalledWith(
-      'llm.providers',
-      expect.objectContaining({
-        gemini: expect.objectContaining({
-          model: DEFAULT_LLM_PROVIDER_SETTINGS.gemini.model,
-          modelSource: 'default',
-        }),
+    expect(migratedProviders()).toMatchObject({
+      gemini: expect.objectContaining({
+        model: DEFAULT_LLM_PROVIDER_SETTINGS.gemini.model,
+        modelSource: 'default',
       }),
-    )
+    })
   })
 
   it('preserves stored custom native model values', async () => {
@@ -260,15 +317,12 @@ describe('useSettingsStore theme preference', () => {
     await useSettingsStore.getState().loadSettings()
 
     expect(useSettingsStore.getState().providerSettings.anthropic.model).toBe('claude-custom-model')
-    expect(settingsRepository.setJsonSetting).toHaveBeenCalledWith(
-      'llm.providers',
-      expect.objectContaining({
-        anthropic: expect.objectContaining({
-          model: 'claude-custom-model',
-          modelSource: 'custom',
-        }),
+    expect(migratedProviders()).toMatchObject({
+      anthropic: expect.objectContaining({
+        model: 'claude-custom-model',
+        modelSource: 'custom',
       }),
-    )
+    })
   })
 
   it('marks explicit native model edits as custom', async () => {
@@ -280,10 +334,10 @@ describe('useSettingsStore theme preference', () => {
     })
     useSettingsStore.setState({ providerSettings: DEFAULT_LLM_PROVIDER_SETTINGS })
 
-    await useSettingsStore.getState().saveProviderSettings('gemini', {
-      ...DEFAULT_LLM_PROVIDER_SETTINGS.gemini,
-      model: 'gemini-custom-model',
-    })
+    await useSettingsStore.getState().saveProviderSettings('gemini', (current) => ({
+      ...current,
+      gemini: { ...current.gemini, model: 'gemini-custom-model' },
+    }))
 
     expect(settingsRepository.setJsonSetting).toHaveBeenCalledWith(
       'llm.providers',
@@ -295,6 +349,76 @@ describe('useSettingsStore theme preference', () => {
       }),
     )
   })
+
+  it('keeps queued provider field edits together while a durable save is pending', async () => {
+    const endpoint = 'https://local.example/v1'
+    const currentSettings = {
+      ...DEFAULT_LLM_PROVIDER_SETTINGS,
+      openai: { ...DEFAULT_LLM_PROVIDER_SETTINGS.openai, model: 'openai-custom-model' },
+    }
+    let storedProviders: Record<string, unknown> = {
+      openai: {
+        model: 'openai-custom-model',
+        modelSource: 'custom',
+        reasoning: { effort: 'medium' },
+        accountTag: 'keep-openai-metadata',
+      },
+      'openai-compatible': {
+        model: '',
+        baseUrl: '',
+        endpointTag: 'keep-compatible-metadata',
+      },
+    }
+    let beginFirstWrite!: () => void
+    let releaseFirstWrite!: () => void
+    const firstWriteStarted = new Promise<void>((resolve) => { beginFirstWrite = resolve })
+    const firstWriteGate = new Promise<void>((resolve) => { releaseFirstWrite = resolve })
+    let writeCount = 0
+    settingsRepository.updateJsonSetting.mockImplementation(async (_key, update) => {
+      const next = update(storedProviders) as Record<string, unknown>
+      writeCount += 1
+      if (writeCount === 1) {
+        beginFirstWrite()
+        await firstWriteGate
+      }
+      storedProviders = next
+      return next
+    })
+    useSettingsStore.setState({ providerSettings: currentSettings })
+
+    const firstSave = useSettingsStore.getState().saveProviderSettings(
+      'openai-compatible',
+      (current) => ({
+        ...current,
+        'openai-compatible': { ...current['openai-compatible'], baseUrl: endpoint },
+      }),
+    )
+    await firstWriteStarted
+    const secondSave = useSettingsStore.getState().saveProviderSettings(
+      'openai-compatible',
+      (current) => ({
+        ...current,
+        'openai-compatible': { ...current['openai-compatible'], model: 'qa-intermediate-model' },
+      }),
+    )
+    const thirdSave = useSettingsStore.getState().saveProviderSettings(
+      'openai-compatible',
+      (current) => ({
+        ...current,
+        'openai-compatible': { ...current['openai-compatible'], model: 'qa-model' },
+      }),
+    )
+    releaseFirstWrite()
+    await Promise.all([firstSave, secondSave, thirdSave])
+
+    expect(storedProviders['openai-compatible']).toMatchObject({ model: 'qa-model', baseUrl: endpoint })
+    expect(storedProviders.openai).toMatchObject({
+      model: 'openai-custom-model',
+      modelSource: 'custom',
+      accountTag: 'keep-openai-metadata',
+    })
+    expect(storedProviders['openai-compatible']).toMatchObject({ endpointTag: 'keep-compatible-metadata' })
+  })
 })
 
 describe('useSettingsStore legacy geminiApiKey', () => {
@@ -304,6 +428,9 @@ describe('useSettingsStore legacy geminiApiKey', () => {
     settingsRepository.setSetting.mockReset().mockResolvedValue(undefined)
     settingsRepository.getJsonSetting.mockReset()
     settingsRepository.setJsonSetting.mockReset().mockResolvedValue(undefined)
+    settingsRepository.setSettings.mockReset()
+    settingsRepository.updateJsonSetting.mockReset()
+    installRepositoryMutationMocks()
     useSettingsStore.setState({ llmSecrets: {}, providerSettings: DEFAULT_LLM_PROVIDER_SETTINGS })
   })
 

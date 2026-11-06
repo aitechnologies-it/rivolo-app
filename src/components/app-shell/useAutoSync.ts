@@ -6,9 +6,9 @@ import { getOneDriveState } from '../../lib/oneDriveState'
 import { targetFromState } from '../../lib/oneDriveDailyState'
 import { getPendingEditorDayIds } from '../../lib/pendingEditorSaves'
 import {
-  blockedPushMessage,
   pullFromSyncAndRefresh,
   pushToSyncAndRefresh,
+  recordBlockedPush,
   recordSyncAttention,
   clearSyncIssue,
 } from '../../store/syncActions'
@@ -102,7 +102,7 @@ export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | n
           const result = await pushToSyncAndRefresh(false)
           succeeded()
           if (result.status === 'blocked') {
-            recordSyncAttention('push', blockedPushMessage(result.reason))
+            recordBlockedPush(result.reason)
           }
         } catch (error: unknown) {
           failed()
@@ -172,8 +172,8 @@ export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | n
         if (event?.type === 'day-changed') pendingDays.current.add(event.dayId)
         else pendingInventory.current = true
         void maybeAutoSync('remote-event')
-      }, (message) => recordSyncAttention('pull', message, 'relay'), () => clearSyncIssue('relay'))
-    }).catch((error) => { if (!cancelled) recordSyncAttention('pull', String(error), 'relay') })
+      }, (message) => recordSyncAttention('pull', message, { category: 'relay' }), () => clearSyncIssue('relay'))
+    }).catch((error) => { if (!cancelled) recordSyncAttention('pull', String(error), { category: 'relay' }) })
     return () => { cancelled = true; stop?.() }
   }, [eventItem, maybeAutoSync, provider, status.connected])
 

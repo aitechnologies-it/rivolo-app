@@ -50,8 +50,10 @@ export type NotebookProgress = { inventoryComplete: boolean; loaded: number; tot
 export const getNotebookProgress = async (target: NotebookTarget) =>
   await getJsonSetting<NotebookProgress>(`onedrive.progress:${targetKey(target)}`) ?? { inventoryComplete: false, loaded: 0, total: 0, lastReconciledAt: null }
 export const setNotebookProgress = async (target: NotebookTarget, value: NotebookProgress) => {
-  await setJsonSetting(`onedrive.progress:${targetKey(target)}`, value)
-  if (typeof window !== 'undefined') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
+  // Progress is a display hint rewritten per day during a full pull; saving the
+  // whole database for each update would make large pulls much slower.
+  await setJsonSetting(`onedrive.progress:${targetKey(target)}`, value, { durable: false })
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
 }
 
 export type DailyEvent = { type: 'day-changed'; dayId: string; item: string; revision: string } | { type: 'inventory-invalidated'; revision: string }
