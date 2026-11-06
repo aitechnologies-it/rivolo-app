@@ -13,9 +13,21 @@ vi.mock('./db', () => ({
   queryAll: async (sql: string, params: SqlParam[] = []) => queryRows(dbMock.db!, sql, params),
   queryOne: async (sql: string, params: SqlParam[] = []) => queryRows(dbMock.db!, sql, params)[0] ?? null,
   isFtsAvailable: async () => false, upsertFts: async () => {},
-  runAtomicDatabaseMutation: async (fn: (db: RivoloDatabase) => unknown) => { let result: unknown; dbMock.db!.transaction(() => { result = fn(dbMock.db!) }); return result },
+  runAtomicDatabaseMutation: async (fn: (db: RivoloDatabase) => unknown, options: { onCommit?: (result: unknown) => void } = {}) => {
+    let result: unknown
+    dbMock.db!.transaction(() => { result = fn(dbMock.db!) })
+    options.onCommit?.(result)
+    return result
+  },
   flushDatabaseSave: async () => {}, runBulkDatabaseMutation: async (fn: () => Promise<unknown>) => fn(),
   runDatabaseTransaction: async (fn: () => Promise<unknown>) => fn(),
+  getDatabase: async () => dbMock.db!,
+  // Editor drafts are tracked by pendingEditorSaves in these tests; the
+  // database-level draft queue stays empty.
+  registerDayDraftRecoveryHandler: () => {}, markNewDayForRecovery: () => {},
+  getPendingDayDraft: () => null, getPendingDayDraftIds: () => [],
+  getCommittedDayDraftGeneration: () => 0, isDayDraftGenerationStale: () => false,
+  acknowledgePendingDayDraft: () => {},
 }))
 vi.mock('./oneDriveAuth', () => ({ authorizedOneDriveFetch: (url: string, init?: RequestInit) => fetch(url, init), disconnectOneDriveAuth: vi.fn() }))
 vi.mock('./oneDriveEvents', () => ({ flushDailyOneDriveEvents: vi.fn() }))

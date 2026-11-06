@@ -1,14 +1,17 @@
 {
   "name": "rivolo",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && tsc -p tsconfig.functions.json && vite build",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "node scripts/run-vitest.mjs run",
+    "test:watch": "node scripts/run-vitest.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:built": "playwright test",
+    "test:mcp-runtime": "node scripts/test-mcp-runtime.mjs",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "mcp:worker:build": "tsc -p tsconfig.mcp-worker.json && wrangler deploy --dry-run --config wrangler.mcp.toml --outdir dist-mcp-worker",
     "mcp:start": "node dist-mcp/mcp/index.js",
@@ -16,7 +19,9 @@
     "dev:cloud": "npm run build && wrangler pages dev -c wrangler.toml -c workers/onedrive-events/wrangler.toml",
     "test:events-runtime": "node scripts/check-onedrive-events-runtime.mjs",
     "dev:events": "wrangler dev --config workers/onedrive-events/wrangler.toml --port 8790",
-    "deploy:events": "wrangler deploy --config workers/onedrive-events/wrangler.toml"
+    "deploy:events": "wrangler deploy --config workers/onedrive-events/wrangler.toml",
+    "browser": "node scripts/drive-browser.mjs",
+    "test:pwa-interruption": "npm run build && playwright test --config playwright.interruptions.config.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.85",
@@ -54,6 +59,7 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^16.5.0",
     "jsdom": "^29.1.1",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3",

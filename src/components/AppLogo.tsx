@@ -3,7 +3,9 @@ import type { AppIdentity } from '../lib/appIdentity'
 
 type AppLogoProps = {
   identity: AppIdentity
-  size?: 'header' | 'hero'
+  // 'brand' matches 'header' without the app-logo class, which the empty-state
+  // styles hide; the mobile chat overlay keeps its wordmark visible.
+  size?: 'header' | 'hero' | 'brand'
   logoRef?: Ref<HTMLImageElement>
   animating?: boolean
 }
@@ -20,7 +22,7 @@ export default function AppLogo({ identity, size = 'header', logoRef, animating 
         alt="Rivolo"
         className={`${hero
           ? 'hero-logo relative h-16 w-auto drop-shadow-[0_12px_30px_rgba(15,23,42,0.16)] sm:h-20'
-          : `app-logo w-auto ${isAit ? 'h-8 sm:h-10' : 'h-10'}`
+          : `${size === 'header' ? 'app-logo ' : ''}w-auto ${isAit ? 'h-8 sm:h-10' : 'h-10'}`
         } transition-opacity duration-300 ${animating ? 'opacity-0' : 'opacity-100'}`}
       />
       {isAit && (
