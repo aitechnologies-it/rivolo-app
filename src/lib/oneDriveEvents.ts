@@ -187,7 +187,7 @@ const dailyEventRequest = async (target: NotebookTarget, event?: DailyEvent, sig
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { message?: string } | null
     throw Object.assign(new Error(body?.message ?? 'OneDrive live updates are unavailable. Reconnecting automatically.'),
-      { retryMs: Math.max(0, Number(response.headers.get('Retry-After')) || 0) * 1000 })
+      { retryMs: Math.max(0, Number(response.headers.get('Retry-After')) || 0) * 1000, status: response.status })
   }
   return response
 }
@@ -201,11 +201,21 @@ export const flushDailyOneDriveEvents = async (target: NotebookTarget) => {
   dailyRetry = undefined
   try {
     await assertTarget(target)
+    const rows = await readDailyOutbox(target)
+    // Nothing queued: skip the two whole-database saves below.
+    if (!rows.length) { dailyFailures = 0; return }
     // Upload result and notification intent are in the same persisted database
     // checkpoint. A restart retries metadata publication without re-uploading.
     await persistDailyCheckpoint()
-    for (const row of await readDailyOutbox(target)) {
-      await dailyEventRequest(target, row.entry.event)
+    for (const row of rows) {
+      try { await dailyEventRequest(target, row.entry.event) }
+      catch (error) {
+        // The relay refused this notification for good (invalid, or the file
+        // left the notebook). It is only a hint to refresh, so drop it rather
+        // than hold back every notification queued after it.
+        if (![400, 403].includes((error as { status?: number }).status ?? 0)) throw error
+        console.warn('[OneDrive] events:dropped', { item: row.item })
+      }
       await acknowledgeDailyEvent(row.entry.context, row.item, row.value)
     }
     await persistDailyCheckpoint()

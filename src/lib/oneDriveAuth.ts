@@ -156,6 +156,7 @@ const completeAuth = async (code: string, returnedState: string | null) => {
   }
 }
 
+let tokenRefresh: Promise<string> | null = null
 export const getOneDriveAccessToken = async (forceRefresh = false) => {
   if (
     !forceRefresh &&
@@ -164,7 +165,13 @@ export const getOneDriveAccessToken = async (forceRefresh = false) => {
   ) {
     return memoryToken.accessToken
   }
+  // Requests that start together share one refresh instead of each rotating
+  // the refresh cookie.
+  tokenRefresh ??= refreshOneDriveAccessToken().finally(() => { tokenRefresh = null })
+  return tokenRefresh
+}
 
+const refreshOneDriveAccessToken = async () => {
   const response = await fetch('/api/onedrive/token', {
     method: 'POST',
     credentials: 'include',
