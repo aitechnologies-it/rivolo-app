@@ -44,9 +44,14 @@ const mergeUnits = (base: string[], ours: string[], theirs: string[]): MergedUni
   for (let i = 0; i <= base.length; i++) {
     const remoteAdded = remote.additions.get(i) ?? []
     const localAdded = local.additions.get(i) ?? []
-    result.push(...remoteAdded.map((index) => ({ text: theirs[index], side: 'remote' as const, index })))
-    const alreadyIncluded = containsSequence(remoteAdded.map((index) => theirs[index]), localAdded.map((index) => ours[index]))
-    if (!alreadyIncluded) result.push(...localAdded.map((index) => ({ text: ours[index], side: 'local' as const, index })))
+    const remoteTexts = remoteAdded.map((index) => theirs[index])
+    const localTexts = localAdded.map((index) => ours[index])
+    // Lines both sides added at the same place are kept once, whichever side
+    // holds the longer run: the other side's run is already inside it.
+    const remoteCoversLocal = containsSequence(remoteTexts, localTexts)
+    const localCoversRemote = !remoteCoversLocal && containsSequence(localTexts, remoteTexts)
+    if (!localCoversRemote) result.push(...remoteAdded.map((index) => ({ text: theirs[index], side: 'remote' as const, index })))
+    if (!remoteCoversLocal) result.push(...localAdded.map((index) => ({ text: ours[index], side: 'local' as const, index })))
     if (i === base.length) break
     if (local.replacements.has(i)) {
       const index = local.replacements.get(i)

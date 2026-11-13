@@ -261,13 +261,17 @@ const DayEditorCard = memo(({
   const [details, setDetails] = useState<{ group: BlameGroup; left: number; top: number; content: string } | null>(null)
   const attribution = useDayAttribution(day.dayId, day.contentMd, day.updatedAt, loadAttribution)
   const openAuthorDetails = useCallback((group: BlameGroup, anchor: HTMLElement) => {
+    const editor = anchor.closest('.cm-editor')
+    const view = editor ? EditorView.findFromDOM(editor as HTMLElement) : null
+    if (!view) return
+    const content = view.state.doc.toString()
     const card = anchor.closest('.day-editor-card')?.getBoundingClientRect()
     if (!card) return
     const rect = anchor.getBoundingClientRect()
-    setDetails((current) => current?.group.start === group.start && current.content === day.contentMd ? null : {
-      group, content: day.contentMd, left: Math.max(8, Math.min(rect.left - card.left, card.width - 232)), top: rect.bottom - card.top + 4,
+    setDetails((current) => current?.group.start === group.start && current.content === content ? null : {
+      group, content, left: Math.max(8, Math.min(rect.left - card.left, card.width - 232)), top: rect.bottom - card.top + 4,
     })
-  }, [day.contentMd])
+  }, [])
   useEffect(() => {
     if (!details) return
     const dismiss = (event: PointerEvent) => {
@@ -392,12 +396,12 @@ const DayEditorCard = memo(({
     <div
       ref={handleContainerRef}
       data-scroll-target={isToday ? 'today' : undefined}
-      className={`day-editor-card relative scroll-anchor group rounded-[4px] border p-4 transition ${
+      className={`day-editor-card relative scroll-anchor group rounded-[4px] border p-4 transition max-sm:rounded-none max-sm:border-x-0 ${
         heroReveal ? 'hero-reveal' : ''
       } ${
         isFuture
-          ? 'day-editor-card-future border-dashed border-slate-200/60 bg-white/70 shadow-[0_4px_6px_-4px_rgba(0,0,0,0.05),0_2px_8px_rgba(0,0,0,0.03)] hover:border-slate-300/60'
-          : 'border-slate-200/60 bg-white shadow-[0_6px_6px_-4px_rgba(0,0,0,0.10),0_2px_12px_rgba(0,0,0,0.06)] hover:border-slate-300/60'
+          ? 'day-editor-card-future border-dashed border-slate-200/60 bg-white/70 [box-shadow:var(--theme-card-shadow-soft)] hover:border-slate-300/60'
+          : 'border-slate-200/60 bg-white [box-shadow:var(--theme-card-shadow)] hover:border-slate-300/60'
       }`}
     >
       <DayEditorCardHeader

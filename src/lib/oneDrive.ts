@@ -13,7 +13,8 @@ export const getOneDriveStatus = async (): Promise<SyncStatus> => {
   const progress = target ? await getNotebookProgress(target) : null
   return { connected: state.connected, targetName: state.filePath,
     lastRemoteVersion: null, notebookChannel: state.migrationStatus === 'complete' ? state.folderId : null,
-    lastSyncAt: state.lastSyncAt, localDirty: target ? (await listDirtyDays(target)).length > 0 : state.localDirty,
+    // Daily reconciliation pulls and pushes together; the menu falls back to lastSyncAt.
+    lastSyncAt: state.lastSyncAt, lastPullAt: null, lastPushAt: null, localDirty: target ? (await listDirtyDays(target)).length > 0 : state.localDirty,
     accountName: state.accountName, accountEmail: state.accountEmail, offlineReady: progress?.inventoryComplete ?? false }
 }
 export const pullFromOneDrive = async (options: SyncPullOptions = {}) => {

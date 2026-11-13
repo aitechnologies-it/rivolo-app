@@ -1,7 +1,59 @@
-// Hirschberg LCS: linear auxiliary memory, with unchanged edges and disjoint
-// ranges handled directly. Every match and conflict remains a single line.
-export const matchingLines = (base: string[], next: string[]): [number, number][] => {
+// Longest common subsequence of lines, in linear auxiliary memory. Myers'
+// middle snake keeps the cost proportional to the number of changed lines;
+// heavily rewritten ranges fall back to a Hirschberg split, which is bounded
+// by the range size. Every match and conflict remains a single line.
+export const matchingLines = (baseLines: string[], nextLines: string[]): [number, number][] => {
+  // Compare small integers instead of line text.
+  const ids = new Map<string, number>()
+  const intern = (lines: string[]) => Int32Array.from(lines, (line) => {
+    let id = ids.get(line)
+    if (id === undefined) ids.set(line, id = ids.size)
+    return id
+  })
+  const base = intern(baseLines)
+  const next = intern(nextLines)
   const anchors: [number, number][] = []
+
+  // Returns the middle run of matches [a, b, length] on a shortest edit path,
+  // or null when the range needs more edits than the search is worth.
+  const middleSnake = (a0: number, a1: number, b0: number, b1: number): [number, number, number] | null => {
+    const n = a1 - a0
+    const m = b1 - b0
+    const delta = n - m
+    const odd = (delta & 1) === 1
+    const limit = Math.min(Math.ceil((n + m) / 2), Math.ceil(Math.sqrt(n * m) / 2))
+    const offset = limit + 1
+    const forward = new Int32Array(2 * limit + 3)
+    const backward = new Int32Array(2 * limit + 3)
+    for (let d = 0; d <= limit; d++) {
+      for (let k = -d; k <= d; k += 2) {
+        let x = k === -d || k !== d && forward[offset + k - 1] < forward[offset + k + 1]
+          ? forward[offset + k + 1] : forward[offset + k - 1] + 1
+        let y = x - k
+        const startX = x
+        while (x < n && y < m && base[a0 + x] === next[b0 + y]) { x++; y++ }
+        forward[offset + k] = x
+        const other = delta - k
+        if (odd && other >= 1 - d && other <= d - 1 && x + backward[offset + other] >= n) {
+          return [a0 + startX, b0 + startX - k, x - startX]
+        }
+      }
+      for (let k = -d; k <= d; k += 2) {
+        let x = k === -d || k !== d && backward[offset + k - 1] < backward[offset + k + 1]
+          ? backward[offset + k + 1] : backward[offset + k - 1] + 1
+        let y = x - k
+        const startX = x
+        while (x < n && y < m && base[a1 - 1 - x] === next[b1 - 1 - y]) { x++; y++ }
+        backward[offset + k] = x
+        const other = delta - k
+        if (!odd && other >= -d && other <= d && x + forward[offset + other] >= n) {
+          return [a1 - x, b1 - y, x - startX]
+        }
+      }
+    }
+    return null
+  }
+
   const scores = (a0: number, a1: number, b0: number, b1: number, reverse: boolean) => {
     const row = new Uint32Array(b1 - b0 + 1)
     for (let i = 0; i < a1 - a0; i++) {
@@ -38,11 +90,17 @@ export const matchingLines = (base: string[], next: string[]): [number, number][
         }
       } else {
         // A wholesale rewrite often has no shared lines at all: avoid LCS work.
-        const candidates = new Set(next.slice(b0, b1))
+        const candidates = new Set(next.subarray(b0, b1))
         let shared = false
         for (let i = a0; i < a1 && !shared; i++) shared = candidates.has(base[i])
         candidates.clear()
-        if (shared) {
+        const snake = shared ? middleSnake(a0, a1, b0, b1) : null
+        if (snake) {
+          const [a, b, length] = snake
+          visit(a0, a, b0, b)
+          for (let i = 0; i < length; i++) anchors.push([a + i, b + i])
+          visit(a + length, a1, b + length, b1)
+        } else if (shared) {
           const middle = a0 + Math.floor((a1 - a0) / 2)
           const split = splitPoint(a0, middle, a1, b0, b1)
           visit(a0, middle, b0, split)

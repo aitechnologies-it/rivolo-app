@@ -79,7 +79,11 @@ npm run lint
 npm run build
 npm run mcp:build
 npm run test:events-runtime
+npm run test:mcp-runtime
+npm run test:e2e
 ```
+
+See [Testing](#testing) for the browser journeys and their one-time Playwright setup.
 
 Two Vitest workers avoid CPU contention in the 10,000-day import/rollback test. The production build checks the app, Pages Functions and event Worker with TypeScript; the MCP server has its own build. The event runtime check runs Pages and the Worker locally with synthetic credentials, without contacting Microsoft.
 
@@ -311,6 +315,41 @@ Then enable Agent access in Rivolo Settings and test both authentication paths:
 5. repeat with disposable Dropbox and Google Drive accounts before broad rollout.
 
 Do not log bearer tokens, OAuth codes, provider refresh tokens, or note contents. Revoking Agent access destroys the stored provider credential and revokes its personal tokens and OAuth grants.
+
+## Testing
+
+Use Node 24 or newer, then run `npm ci` and
+`npx playwright install chromium webkit` once. On Linux CI, install browser system
+dependencies with `npx playwright install --with-deps chromium webkit`.
+
+```bash
+npm test                 # Fast contracts and real storage/handler integration
+npm run lint
+npm run test:e2e         # Build, then Chromium desktop and mobile WebKit journeys
+npm run test:mcp-runtime # Shipped Worker + migrations in local workerd/D1
+```
+
+`npm run test:e2e:built` reuses an existing build. Browser fixtures use synthetic
+notes and local credentials; external provider/model HTTP is deterministic.
+They never need your cloud account or installed app storage. Browser failures
+retain traces, video and screenshots in `test-results/`; the HTML report is in
+`playwright-report/`. CI uploads both. Chromium checks the generated service
+worker offline; WebKit offline emulation is currently inconclusive because of
+[Playwright issue 42775](https://github.com/microsoft/playwright/issues/42775).
+
+The [journey manifest](docs/testing/journeys.md) defines independent outcomes and
+evidence for agent exploration. Invoke the repository's `agentic-qa-tests` skill
+for testing, fresh verification, confirmed-bug plans and inconclusive reporting.
+It writes ignored scratch runs under `tests/agentic-qa-tests/runs/`; those files
+and browser specs are excluded from Vitest. Agent exploration supplements the
+deterministic gates. Installed iOS/Mac PWA close behavior and live model quality
+require separate, explicitly recorded checks.
+
+The audit independently confirmed immediate-reload note loss before the editor
+save debounce. Run `npm run test:pwa-interruption` for its maintained browser
+reproduction; it currently exits nonzero on both engines. It is separate from the
+green normal-save gate, keeps the intended latest-text assertion, and belongs to
+the existing PWA-close follow-up. See [the QA receipt](docs/testing/agent-qa-run.md).
 
 ## Debugging
 

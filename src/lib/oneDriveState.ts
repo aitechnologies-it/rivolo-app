@@ -1,4 +1,6 @@
-import { getJsonSetting, setJsonSetting } from './settingsRepository'
+import { flushDatabaseSave } from './db'
+import { getJsonSetting, updateJsonSetting } from './settingsRepository'
+import { executeSql, queryFirstRow, type RivoloDatabase } from './sqliteRuntime'
 
 export type OneDriveState = {
   connected: boolean
@@ -52,13 +54,24 @@ const readOneDriveState = async () => {
 }
 
 const enqueueOneDriveStateWrite = async <T>(
-  mutator: (current: OneDriveState) => { next: OneDriveState; result: T },
+  // `durable: false` keeps the write in memory until the next scheduled
+  // database save instead of saving the whole database now.
+  mutator: (current: OneDriveState) => { next: OneDriveState; result: T; durable?: boolean },
 ) => {
+  // Read and write in one transaction so a dirty mark made inside a note write
+  // (markOneDriveLocalDirtyInDatabase) is not overwritten by a queued update.
   const run = async () => {
-    const current = await readOneDriveState()
-    const { next, result } = mutator(current)
-    await setJsonSetting('onedrive.state', next)
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
+    let result!: T
+    let durable = true
+    await updateJsonSetting<unknown>('onedrive.state', (stored) => {
+      const current = { ...DEFAULT_STATE, ...(stored && typeof stored === 'object' ? stored : {}) } as OneDriveState
+      const { next, result: nextResult, durable: nextDurable } = mutator(current)
+      result = nextResult
+      durable = nextDurable !== false
+      return next
+    }, { durable: false })
+    if (durable) await flushDatabaseSave()
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
     return result
   }
 
@@ -86,6 +99,15 @@ export const updateOneDriveState = async (updates: Partial<OneDriveState>) => {
   })
 }
 
+// Records the outcome of a sync pass. A pass that changes nothing but the
+// time of the last check does not save the whole database for it.
+export const updateOneDriveSyncSummary = async (updates: Pick<OneDriveState, 'localDirty' | 'lastSyncAt' | 'lastRemoteRev'>) => {
+  return enqueueOneDriveStateWrite((current) => {
+    const next = { ...current, ...updates }
+    return { next, result: next, durable: current.localDirty !== next.localDirty || current.lastRemoteRev !== next.lastRemoteRev }
+  })
+}
+
 export const updateOneDriveFilePath = async (filePath: string) => {
   return enqueueOneDriveStateWrite((current) => {
     const pathChanged = current.filePath !== filePath
@@ -107,6 +129,29 @@ export const updateOneDriveFilePath = async (filePath: string) => {
 
     return { next, result: next }
   })
+}
+
+// Legacy single-file notebooks use this flag; daily notebooks derive pending
+// days from the onedrive_day_changes journal instead.
+export const markOneDriveLocalDirtyInDatabase = (db: RivoloDatabase) => {
+  const row = queryFirstRow<{ value: string }>(db, 'SELECT value FROM settings WHERE key = ? LIMIT 1', ['onedrive.state'])
+  let stored: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = row ? JSON.parse(row.value) : null
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) stored = parsed as Record<string, unknown>
+  } catch {
+    stored = {}
+  }
+  const state = { ...DEFAULT_STATE, ...stored } as OneDriveState
+  const next = {
+    ...state,
+    localDirty: true,
+    localRevision: (Number.isSafeInteger(state.localRevision) ? state.localRevision : 0) + 1,
+  }
+  executeSql(db, 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [
+    'onedrive.state',
+    JSON.stringify(next),
+  ])
 }
 
 export const markOneDriveLocalDirty = async () => {
