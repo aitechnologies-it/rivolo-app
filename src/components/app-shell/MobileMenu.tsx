@@ -92,6 +92,8 @@ export default function MobileMenu({
   const setMenuAttentionCount = useUIStore((state) => state.setMenuAttentionCount)
   const themePreference = useSettingsStore((state) => state.themePreference)
   const updateThemePreference = useSettingsStore((state) => state.updateThemePreference)
+  const mobileAuthors = useSettingsStore((state) => state.mobileAuthors)
+  const updateMobileAuthors = useSettingsStore((state) => state.updateMobileAuthors)
   const activeSyncProvider = useSyncStore((state) => state.activeProvider)
   const syncStatus = useSyncStore((state) => state.status)
   const syncOperation = useSyncStore((state) => state.syncOperation)
@@ -525,7 +527,7 @@ export default function MobileMenu({
               }}
             />
 
-            <div className="grid grid-cols-3 items-start gap-2 py-1">
+            <div className={`grid items-start gap-2 py-1 ${activeSyncProvider === 'onedrive' ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <button
                 type="button"
                 className={menuTileClass}
@@ -543,6 +545,25 @@ export default function MobileMenu({
                 <span className={menuTileLabelClass}>Clear chat</span>
                 {chatSending && <span className={menuTileMetaClass}>Replying…</span>}
               </button>
+              {activeSyncProvider === 'onedrive' && (
+                <button
+                  type="button"
+                  className={menuTileClass}
+                  aria-pressed={mobileAuthors}
+                  onClick={() => {
+                    void updateMobileAuthors(!mobileAuthors)
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`${menuTileFaceClass} ${mobileAuthors ? 'border-[var(--theme-accent-border)] bg-[var(--theme-accent-soft)]' : menuTileIdleFaceClass}`}
+                  >
+                    <img src="/user.svg" alt="" className="h-6 w-6" />
+                  </span>
+                  <span className={menuTileLabelClass}>Authors</span>
+                  <span className={menuTileMetaClass}>{mobileAuthors ? 'Shown' : 'Hidden'}</span>
+                </button>
+              )}
               <button
                 type="button"
                 className={menuTileClass}

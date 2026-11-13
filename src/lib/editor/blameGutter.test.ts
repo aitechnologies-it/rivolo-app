@@ -22,6 +22,26 @@ describe('line author gutter', () => {
     ])
     expect(groupLineAttribution([], '2026-10-01')).toEqual([])
   })
+  it('never lets a blank line start, end or split an author block', () => {
+    const bob = { author: 'Bob', date: null }, carol = { author: 'Carol', date: null }
+    const lines = ['', 'Bob one', '', 'Bob two', '  ', '', 'Carol one', '']
+    expect(groupLineAttribution([carol, bob, carol, bob, bob, carol, carol, bob], '2026-10-01', lines)).toEqual([
+      { author: 'Bob', start: 1, end: 3, dates: [] }, { author: 'Carol', start: 6, end: 6, dates: [] },
+    ])
+  })
+  it('marks only lines inside a block, closing it on the author\'s last line of text', () => {
+    const bob = { author: 'Bob', date: null }, carol = { author: 'Carol', date: null }
+    const parent = document.createElement('div')
+    document.body.append(parent)
+    const view = new EditorView({ parent, state: EditorState.create({ doc: '\nBob one\n\nBob two\n\nCarol',
+      extensions: [blameGutter('2026-10-01', [carol, bob, carol, bob, bob, carol], vi.fn())] }) })
+    try {
+      const cells = [...parent.querySelectorAll('.cm-blame-gutter .cm-gutterElement')].slice(1)
+      expect(cells.map((cell) => cell.querySelector('.cm-blame-badge')?.textContent ??
+        (cell.querySelector('.cm-blame-end') ? 'end' : cell.querySelector('.cm-blame-rail') ? 'rail' : '')))
+        .toEqual(['', 'BO', 'rail', 'end', '', 'CA'])
+    } finally { view.destroy(); parent.remove() }
+  })
   it('reuses badge DOM through typing and attribution refresh, and moves blocks with inserted lines', () => {
     const compartment = new Compartment()
     const open = vi.fn()

@@ -10,6 +10,10 @@ vi.mock('@uiw/react-codemirror', () => ({ default: ({ value, onChange, onBlur }:
   value: string; onChange: (value: string) => void; onBlur: (event: { nativeEvent: FocusEvent }) => void
 }) => <textarea aria-label="Note editor" value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} /> }))
 
+// The card reads the viewport width to decide whether authors are shown.
+Object.defineProperty(window, 'matchMedia', { configurable: true,
+  value: () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }) })
+
 describe('note editor sync refresh', () => {
   it('retains the empty paragraph, editor node and cursor when its saved document returns', async () => {
     const onChange = vi.fn(), onBlur = vi.fn()
