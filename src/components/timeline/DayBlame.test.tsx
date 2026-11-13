@@ -1,6 +1,6 @@
-import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DayBlameDetails } from './DayBlame'
 import { useDayAttribution } from './useDayAttribution'
 import { writeNotebookAuthors, writeNotebookAttribution } from '../../lib/oneDriveBlame'
@@ -18,7 +18,6 @@ const dayId = '2026-10-01'
 const notebook = (contentMd: string) => exportMarkdown([{ dayId, contentMd, humanTitle: 'Thursday', createdAt: 0, updatedAt: 0 }])
 const timestamp = new Date(2026, 9, 2, 12).getTime()
 beforeEach(() => { vi.clearAllMocks(); mocks.lastSyncAt = 1; mocks.dailyState.mockResolvedValue(null) })
-afterEach(() => vi.unstubAllGlobals())
 describe('day author gutter data', () => {
   it.each([null, { baseline: null }])('attributes a new daily note before its first push (checkpoint: %j)', async (checkpoint) => {
     mocks.state.mockResolvedValue({ folderId: 'notebook', accountId: 'alice', targetGeneration: 1, mergeBaseContent: null, accountName: 'Alice' })
@@ -118,30 +117,6 @@ describe('day author gutter data', () => {
       { author: 'Alice', date: '2026-10-02' }, { author: 'Alice', date: '2026-10-02' },
     ])
     expect(mocks.state).toHaveBeenCalledTimes(1)
-  })
-  it('aligns long drafts in a worker and cancels obsolete work', async () => {
-    const jobs: { postMessage: ReturnType<typeof vi.fn>; terminate: ReturnType<typeof vi.fn>; onmessage?: (event: { data: unknown }) => void }[] = []
-    vi.stubGlobal('Worker', class {
-      postMessage = vi.fn()
-      terminate = vi.fn()
-      constructor() { jobs.push(this) }
-    })
-    mocks.state.mockResolvedValue({ mergeBaseContent: notebook('Baseline'), accountName: 'Alice' })
-    const { result, rerender, unmount } = renderHook(({ content }) => useDayAttribution(dayId, content, timestamp, true),
-      { initialProps: { content: 'a'.repeat(21_000) } })
-    await waitFor(() => expect(jobs).toHaveLength(1))
-    expect(jobs[0].postMessage).toHaveBeenCalledWith(expect.objectContaining({ before: 'Baseline', after: 'a'.repeat(21_000) }))
-    rerender({ content: 'b'.repeat(21_000) })
-    expect(jobs[0].terminate).toHaveBeenCalled()
-    await waitFor(() => expect(jobs).toHaveLength(2))
-    const aligned = [{ author: 'Alice', date: '2026-10-02' }]
-    await act(async () => { jobs[1].onmessage?.({ data: aligned }) })
-    expect(result.current.attribution).toEqual(aligned)
-    // Even a late response from the superseded job cannot overwrite the result.
-    await act(async () => { jobs[0].onmessage?.({ data: [{ author: 'Wrong', date: null }] }) })
-    expect(result.current.attribution).toEqual(aligned)
-    unmount()
-    expect(jobs[1].terminate).toHaveBeenCalled()
   })
   it('shows the full author and different dates in a closable detail popup', async () => {
     const onClose = vi.fn()

@@ -17,27 +17,13 @@ export function useDayAttribution(dayId: string, content: string, editedAt: numb
   useEffect(() => {
     if (!enabled) return
     let cancelled = false
-    let worker: Worker | undefined
     const align = async () => {
       if (cached.current?.key !== baselineKey) cached.current = { key: baselineKey, value: loadBaseline(dayId) }
       const baseline = await cached.current.value
       if (cancelled) return
-      const changed = { author: baseline.author, date: baseline.author ? editDayId(editedAt) : null }
-      let aligned: LineAttribution[]
-      // Large, scattered edits can make the LCS expensive. Keep it off the typing thread.
-      if (typeof Worker !== 'undefined' && (baseline.content.length + content.length > 20_000 ||
-          baseline.content.split('\n').length + content.split('\n').length > 800)) {
-        worker = new Worker(new URL('../../lib/editor/blameAlignment.worker.ts', import.meta.url), { type: 'module' })
-        aligned = await new Promise<LineAttribution[]>((resolve, reject) => {
-          worker!.onmessage = (event: MessageEvent<LineAttribution[]>) => resolve(event.data)
-          worker!.onerror = () => reject(new Error('Unable to align authors'))
-          worker!.postMessage({ before: baseline.content, after: content, attribution: baseline.attribution, changed })
-        })
-        worker.terminate()
-      } else {
-        aligned = alignLineAttribution(baseline.content, content, baseline.attribution, changed)
-      }
-      if (!cancelled) setResult({ key, baselineKey, attribution: aligned })
+      const aligned = alignLineAttribution(baseline.content, content, baseline.attribution,
+        { author: baseline.author, date: baseline.author ? editDayId(editedAt) : null })
+      setResult({ key, baselineKey, attribution: aligned })
     }
     const timer = setTimeout(() => {
       void align().catch(() => {
@@ -45,10 +31,9 @@ export function useDayAttribution(dayId: string, content: string, editedAt: numb
           cached.current = null
           setResult({ key, baselineKey, attribution: [], failed: true })
         }
-        worker?.terminate()
       })
     }, 160)
-    return () => { cancelled = true; clearTimeout(timer); worker?.terminate() }
+    return () => { cancelled = true; clearTimeout(timer) }
   }, [baselineKey, content, dayId, editedAt, enabled, key])
   return {
     attribution: enabled && result?.baselineKey === baselineKey && !result.failed ? result.attribution : null,
