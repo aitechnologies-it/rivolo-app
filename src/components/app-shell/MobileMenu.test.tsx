@@ -292,3 +292,21 @@ describe('Mobile menu quick actions', () => {
     expect(useUIStore.getState().menuAttentionCount).toBe(0)
   })
 })
+
+describe('Mobile menu authors tile', () => {
+  it('offers the authors switch only to OneDrive notebooks and flips the stored choice', () => {
+    const updateMobileAuthors = vi.fn(async () => {})
+    useSettingsStore.setState({ mobileAuthors: false, updateMobileAuthors })
+    useSyncStore.setState({ activeProvider: 'onedrive' })
+    const { unmount } = render(<MemoryRouter><MobileMenu databaseStale={false} syncing={false} attentionItems={[]} onDismissSetupNotice={vi.fn()} onNavigate={vi.fn()} /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }))
+    const tile = screen.getByRole('button', { name: /Authors/ })
+    expect(tile).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(tile)
+    expect(updateMobileAuthors).toHaveBeenCalledWith(true)
+    unmount()
+    useSyncStore.setState({ activeProvider: null })
+    openMenu()
+    expect(screen.queryByRole('button', { name: /Authors/ })).not.toBeInTheDocument()
+  })
+})
