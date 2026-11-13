@@ -24,7 +24,7 @@ type AutoSyncStatus = {
 const AUTO_SYNC_INTERVAL_MS = 3 * 60 * 1000
 const FOREGROUND_BACKGROUND_MIN_MS = 15 * 1000
 
-type AutoSyncReason = 'start' | 'reconnect' | 'foreground' | 'interval' | 'queued' | 'remote-event'
+type AutoSyncReason = 'start' | 'reconnect' | 'foreground' | 'interval' | 'queued' | 'remote-event' | 'draft-wait'
 
 export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | null = null) => {
   const statusRef = useRef({ ...status, provider })
@@ -36,10 +36,10 @@ export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | n
   const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const reconcileRef = useRef<((reason: AutoSyncReason) => Promise<void>) | null>(null)
   const mounted = useRef(true)
-  const scheduleRetry = useCallback((delay: number) => {
+  const scheduleRetry = useCallback((delay: number, reason: AutoSyncReason = 'queued') => {
     if (!mounted.current) return
     clearTimeout(retryTimer.current)
-    retryTimer.current = setTimeout(() => { void reconcileRef.current?.('queued') }, delay)
+    retryTimer.current = setTimeout(() => { void reconcileRef.current?.(reason) }, delay)
   }, [])
   useEffect(() => {
     mounted.current = true
@@ -71,7 +71,9 @@ export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | n
       const isOneDrive = currentStatus.provider === 'onedrive'
       if (isOneDrive && document.visibilityState !== 'visible') return
       if (isOneDrive && now < retryAt.current) { scheduleRetry(retryAt.current - now); return }
-      if (isOneDrive && getPendingEditorDayIds().size) scheduleRetry(1000)
+      // While a draft is still unsaved, the timer only checks locally whether
+      // typing has paused. It reaches OneDrive again once the draft is saved.
+      if (isOneDrive && reason === 'draft-wait' && getPendingEditorDayIds().size) { scheduleRetry(1000, 'draft-wait'); return }
       if (reason === 'interval' && now - lastAutoSyncAt.current < AUTO_SYNC_INTERVAL_MS) {
         return
       }
@@ -116,15 +118,24 @@ export const useAutoSync = (status: AutoSyncStatus, provider: SyncProviderId | n
 
       console.info('[Sync] auto-pull:trigger', { reason })
       try {
-        const dayIds = reason === 'remote-event' || reason === 'queued' ? [...pendingDays.current] : []
+        const dayIds = reason === 'remote-event' || reason === 'queued' || reason === 'draft-wait' ? [...pendingDays.current] : []
         const full = !dayIds.length || pendingInventory.current
-        const result = await pullFromSyncAndRefresh({ force: false, ...(isOneDrive && !full ? { dayIds } : {}) })
+        // Claim the notices before the request: one that arrives while it runs
+        // stays queued for the next pass instead of being cleared with these.
+        const inventory = pendingInventory.current
         for (const id of dayIds) pendingDays.current.delete(id)
         pendingInventory.current = false
+        let result
+        try { result = await pullFromSyncAndRefresh({ force: false, ...(isOneDrive && !full ? { dayIds } : {}) }) }
+        catch (error) {
+          for (const id of dayIds) pendingDays.current.add(id)
+          pendingInventory.current ||= inventory
+          throw error
+        }
         succeeded()
         if (isOneDrive && (result.deferredDayIds?.length || getPendingEditorDayIds().size)) {
           for (const id of result.deferredDayIds ?? []) pendingDays.current.add(id)
-          scheduleRetry(1000)
+          scheduleRetry(1000, 'draft-wait')
         }
       } catch (error: unknown) {
         failed()
