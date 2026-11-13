@@ -7,17 +7,17 @@ import { writeNotebookAuthors, writeNotebookAttribution } from '../../lib/oneDri
 import { exportMarkdown } from '../../lib/markdown'
 import { groupLineAttribution } from '../../lib/editor/blameGutter'
 
-const mocks = vi.hoisted(() => ({ state: vi.fn(), dailyState: vi.fn() }))
+const mocks = vi.hoisted(() => ({ state: vi.fn(), dailyState: vi.fn(), lastSyncAt: 1 }))
 vi.mock('../../lib/oneDriveState', () => ({ getOneDriveState: mocks.state }))
 vi.mock('../../lib/oneDriveDailyState', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../lib/oneDriveDailyState')>(),
   getDailyState: mocks.dailyState,
 }))
-vi.mock('../../store/useSyncStore', () => ({ useSyncStore: (selector: (state: unknown) => unknown) => selector({ status: { lastSyncAt: 1 } }) }))
+vi.mock('../../store/useSyncStore', () => ({ useSyncStore: (selector: (state: unknown) => unknown) => selector({ status: { lastSyncAt: mocks.lastSyncAt } }) }))
 const dayId = '2026-10-01'
 const notebook = (contentMd: string) => exportMarkdown([{ dayId, contentMd, humanTitle: 'Thursday', createdAt: 0, updatedAt: 0 }])
 const timestamp = new Date(2026, 9, 2, 12).getTime()
-beforeEach(() => { vi.clearAllMocks(); mocks.dailyState.mockResolvedValue(null) })
+beforeEach(() => { vi.clearAllMocks(); mocks.lastSyncAt = 1; mocks.dailyState.mockResolvedValue(null) })
 describe('day author gutter data', () => {
   it.each([null, { baseline: null }])('attributes a new daily note before its first push (checkpoint: %j)', async (checkpoint) => {
     mocks.state.mockResolvedValue({ folderId: 'notebook', accountId: 'alice', targetGeneration: 1, mergeBaseContent: null, accountName: 'Alice' })
@@ -25,11 +25,13 @@ describe('day author gutter data', () => {
     const { result, rerender } = renderHook(({ content }) => useDayAttribution(dayId, content, timestamp, true),
       { initialProps: { content: 'New note' } })
     await waitFor(() => expect(result.current.attribution).toEqual([{ author: 'Alice', date: '2026-10-02' }]))
+    const reads = mocks.state.mock.calls.length
     // Further local typing needs neither a cloud request nor a first push.
     rerender({ content: 'New note\nMore text' })
     await waitFor(() => expect(result.current.attribution).toEqual([
       { author: 'Alice', date: '2026-10-02' }, { author: 'Alice', date: '2026-10-02' },
     ]))
+    expect(mocks.state).toHaveBeenCalledTimes(reads)
   })
   it('preserves unknown historical lines in a daily baseline and attributes only local changes', async () => {
     mocks.state.mockResolvedValue({ folderId: 'notebook', mergeBaseContent: null, accountName: 'Alice' })
@@ -81,6 +83,40 @@ describe('day author gutter data', () => {
     rerender({ enabled: false }); rerender({ enabled: true })
     await waitFor(() => expect(result.current.attribution).toEqual([{ author: null, date: null }]))
     expect(result.current.failed).toBe(false)
+  })
+  it('refreshes authors after a sync while keeping the cached baseline during typing', async () => {
+    const oldBase = await writeNotebookAuthors(notebook('First\nSecond'), new Map([[dayId, ['Bob', 'Bob']]]))
+    const newBase = await writeNotebookAuthors(notebook('First\nRemote'), new Map([[dayId, ['Bob', 'Carol']]]))
+    mocks.state.mockResolvedValue({ mergeBaseContent: oldBase, accountName: 'Alice' })
+    const { result, rerender } = renderHook(({ content }) => useDayAttribution(dayId, content, timestamp, true),
+      { initialProps: { content: 'First\nSecond' } })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    const previous = result.current.attribution
+    rerender({ content: 'First\nLocal' })
+    // Do not remove the gutter while the next alignment is pending.
+    expect(result.current.attribution).toBe(previous)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(mocks.state).toHaveBeenCalledTimes(1)
+    mocks.state.mockResolvedValue({ mergeBaseContent: newBase, accountName: 'Alice' })
+    mocks.lastSyncAt++
+    rerender({ content: 'First\nRemote' })
+    await waitFor(() => expect(result.current.attribution?.[1].author).toBe('Carol'))
+    expect(mocks.state).toHaveBeenCalledTimes(2)
+  })
+  it('debounces rapid edits and ignores an obsolete baseline read', async () => {
+    let finish!: (value: unknown) => void
+    mocks.state.mockReturnValue(new Promise((resolve) => { finish = resolve }))
+    const { result, rerender } = renderHook(({ content }) => useDayAttribution(dayId, content, timestamp, true),
+      { initialProps: { content: 'Old draft' } })
+    await waitFor(() => expect(mocks.state).toHaveBeenCalledTimes(1))
+    rerender({ content: 'Intermediate draft' })
+    rerender({ content: 'Final draft\nSecond line' })
+    finish({ mergeBaseContent: notebook('Old draft'), accountName: 'Alice' })
+    await waitFor(() => expect(result.current.attribution).toHaveLength(2))
+    expect(result.current.attribution).toEqual([
+      { author: 'Alice', date: '2026-10-02' }, { author: 'Alice', date: '2026-10-02' },
+    ])
+    expect(mocks.state).toHaveBeenCalledTimes(1)
   })
   it('shows the full author and different dates in a closable detail popup', async () => {
     const onClose = vi.fn()
