@@ -58,6 +58,7 @@ type SettingsState = {
   wallpaper: Wallpaper
   highlightInputMode: boolean
   autocorrection: boolean
+  mobileAuthors: boolean
   animations: boolean
   fontPreference: FontPreference
   bodyFont: BodyFont
@@ -80,6 +81,7 @@ type SettingsState = {
   updateHighlightInputMode: (enabled: boolean) => Promise<void>
   updateAnimations: (enabled: boolean) => Promise<void>
   updateAutocorrection: (enabled: boolean) => Promise<void>
+  updateMobileAuthors: (enabled: boolean) => Promise<void>
   updateFontPreset: (preset: FontPreset) => Promise<void>
   updateTitleFont: (titleFont: TitleFont) => Promise<void>
   updateBodyFontChoice: (choice: BodyFontChoice) => Promise<void>
@@ -209,6 +211,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   wallpaper: 'thoughts-light',
   highlightInputMode: false,
   autocorrection: true,
+  mobileAuthors: false,
   animations: true,
   fontPreference: 'monospace',
   bodyFont: 'system',
@@ -239,6 +242,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         storedWallpaper,
         storedHighlightInputMode,
         storedAutocorrection,
+        storedMobileAuthors,
         storedAnimations,
         storedFontPreference,
         storedBodyFont,
@@ -260,6 +264,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         getSetting('appearance.wallpaper'),
         getSetting('appearance.highlightInputMode'),
         getSetting('appearance.autocorrection'),
+        getSetting('appearance.mobileAuthors'),
         getSetting('appearance.animations'),
         getSetting('appearance.font'),
         getSetting('appearance.bodyFont'),
@@ -304,6 +309,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             : defaultWallpaper
       const highlightInputMode = storedHighlightInputMode === 'true'
       const autocorrection = storedAutocorrection !== 'false'
+      const mobileAuthors = storedMobileAuthors === 'true'
       const animations = storedAnimations !== 'false'
       const fontPreference = (storedFontPreference as FontPreference | null) ?? 'monospace'
       const bodyFont = isBodyFont(storedBodyFont) ? storedBodyFont : 'system'
@@ -376,6 +382,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         wallpaper,
         highlightInputMode,
         autocorrection,
+        mobileAuthors,
         animations,
         fontPreference,
         bodyFont,
@@ -536,6 +543,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     return serializeSettingsOperation(async () => {
       await setSetting('appearance.autocorrection', enabled ? 'true' : 'false')
       set({ autocorrection: enabled })
+    })
+  },
+
+  updateMobileAuthors: async (enabled) => {
+    return serializeSettingsOperation(async () => {
+      await setSetting('appearance.mobileAuthors', enabled ? 'true' : 'false')
+      set({ mobileAuthors: enabled })
     })
   },
 

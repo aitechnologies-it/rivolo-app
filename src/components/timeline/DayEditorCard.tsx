@@ -8,6 +8,8 @@ import { wrapSelectionOnDelimiter } from '../../lib/editor/wrapSelection'
 import { editorHighlights } from '../../lib/editorHighlights'
 import type { Day } from '../../lib/dayRepository'
 import { useSyncStore } from '../../store/useSyncStore'
+import { useSettingsStore } from '../../store/useSettingsStore'
+import { useIsNarrowViewport } from '../../hooks/useIsNarrowViewport'
 import { DayBlameDetails } from './DayBlame'
 import { useDayAttribution } from './useDayAttribution'
 import { blameGutter, type BlameGroup } from '../../lib/editor/blameGutter'
@@ -254,7 +256,10 @@ const DayEditorCard = memo(({
   registerDayRef,
 }: DayEditorCardProps) => {
   const activeProvider = useSyncStore((state) => state.activeProvider)
-  const showBlame = activeProvider === 'onedrive'
+  // Authors take 36px of line width, so phones show them only when asked.
+  const narrowViewport = useIsNarrowViewport()
+  const mobileAuthors = useSettingsStore((state) => state.mobileAuthors)
+  const showBlame = activeProvider === 'onedrive' && (!narrowViewport || mobileAuthors)
   const loadAttribution = showBlame && shouldMountEditor
   const containerRef = useRef<HTMLDivElement | null>(null)
   const detailsRef = useRef<HTMLDivElement | null>(null)
@@ -283,8 +288,8 @@ const DayEditorCard = memo(({
     document.addEventListener('keydown', escape)
     return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
   }, [details])
-  const authorsExtension = useMemo(() => activeProvider === 'onedrive' ? blameGutter(day.dayId, attribution.attribution, openAuthorDetails) : [],
-    [activeProvider, day.dayId, attribution.attribution, openAuthorDetails])
+  const authorsExtension = useMemo(() => showBlame ? blameGutter(day.dayId, attribution.attribution, openAuthorDetails) : [],
+    [showBlame, day.dayId, attribution.attribution, openAuthorDetails])
   const searchHighlight = useMemo(() => createHighlightPlugin(searchQuery), [searchQuery])
   const hashtagSuggestions = useMemo(() => hashtagCompletion(day.dayId), [day.dayId])
   const quoteHighlight = useMemo(() => (quote ? createHighlightPlugin(quote) : null), [quote])
@@ -427,7 +432,7 @@ const DayEditorCard = memo(({
       {attribution.loading && <span role="status" className="sr-only">Loading authors…</span>}
       {attribution.failed && <span role="alert" className="sr-only">Could not load authors.</span>}
       {showBlame && details?.content === day.contentMd && <div ref={detailsRef}><DayBlameDetails {...details} onClose={() => setDetails(null)} /></div>}
-      <div id={`day-blame-${day.dayId}`} className="mt-3 overflow-hidden rounded-xl">
+      <div id={`day-blame-${day.dayId}`} className={`mt-3 overflow-hidden ${showBlame ? '' : 'rounded-xl'}`}>
         {shouldMountEditor ? (
           <CodeMirror
             value={day.contentMd}
@@ -442,7 +447,7 @@ const DayEditorCard = memo(({
           />
         ) : (
           <button
-            className={`block min-h-[34px] w-full cursor-text rounded-xl border border-slate-100 bg-white px-2 py-1 text-left text-[0.98rem] leading-6 text-[var(--theme-editor-text)] transition hover:border-slate-200 ${activeProvider === 'onedrive' ? 'pl-[42px]' : ''}`}
+            className={`block min-h-[34px] w-full cursor-text rounded-xl border border-slate-100 bg-white px-2 py-1 text-left text-[0.98rem] leading-6 text-[var(--theme-editor-text)] transition hover:border-slate-200 ${showBlame ? 'pl-[42px]' : ''}`}
             type="button"
             aria-label={`Edit note for ${day.dayId}`}
             onClick={() => onRequestEditorMount(day.dayId, 'end')}
