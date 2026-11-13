@@ -142,9 +142,9 @@ const badgeAlignment = ViewPlugin.fromClass(class {
     }
   }
 })
-const railColor = 'hsl(var(--blame-hue) 42% 54%)'
+const railColor = 'hsl(var(--blame-hue) 40% 50% / 0.4)'
 const railLine = `linear-gradient(${railColor}, ${railColor}) center / 2px 100% no-repeat`
-const railFoot = `linear-gradient(${railColor}, ${railColor}) bottom / 10px 2px no-repeat`
+const railFoot = `linear-gradient(${railColor}, ${railColor}) bottom / 8px 2px no-repeat`
 const theme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'transparent', border: 'none' },
   '.cm-blame-gutter': { width: '36px', minWidth: '36px', maxWidth: '36px', padding: '0', flexShrink: '0' },
