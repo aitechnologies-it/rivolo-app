@@ -1,5 +1,6 @@
 import { authorizedOneDriveFetch } from './oneDriveAuth'
 import { dayPath } from './notebookDays'
+import { isValidDayId } from './dates'
 import { getOneDriveState } from './oneDriveState'
 
 export const GRAPH = 'https://graph.microsoft.com/v1.0'
@@ -118,19 +119,35 @@ export const listChildren = async (folder: string) => {
   }
   return items
 }
+// Month folders are listed a few at a time: one request each, so a notebook
+// spanning years would otherwise wait on dozens of sequential round trips.
+const INVENTORY_CONCURRENCY = 4
+const mapLimited = async <T, R>(values: T[], task: (value: T) => Promise<R>) => {
+  const results = new Array<R>(values.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(INVENTORY_CONCURRENCY, values.length) }, async () => {
+    while (next < values.length) { const index = next++; results[index] = await task(values[index]) }
+  }))
+  return results
+}
 export const inventoryDays = async (folder: string) => {
   const result = new Map<string, DriveItem>()
-  for (const year of await listChildren(folder)) {
-    if (!year.folder || !/^\d{4}$/.test(year.name)) continue
-    for (const month of await listChildren(itemAddress(year))) {
-      if (!month.folder || !/^(0[1-9]|1[0-2])$/.test(month.name)) continue
-      for (const file of await listChildren(itemAddress(month))) {
-        if (!file.file || !/^\d{4}-\d{2}-\d{2}\.md$/.test(file.name)) continue
-        const id = file.name.slice(0, -3)
-        if (dayPath(id) !== `${year.name}/${month.name}/${file.name}`) throw new Error(`OneDrive ${file.name}: its name and folder do not match.`)
-        if (result.has(id)) throw new Error(`OneDrive has two files for ${id}. Check the notebook folder.`)
-        result.set(id, file)
+  const years = (await listChildren(folder)).filter((year) => year.folder && /^\d{4}$/.test(year.name))
+  const months = (await mapLimited(years, async (year) => (await listChildren(itemAddress(year)))
+    .filter((month) => month.folder && /^(0[1-9]|1[0-2])$/.test(month.name)).map((month) => ({ year, month })))).flat()
+  const listings = await mapLimited(months, async ({ year, month }) => ({ year, month, files: await listChildren(itemAddress(month)) }))
+  for (const { year, month, files } of listings) {
+    for (const file of files) {
+      if (!file.file || !/^\d{4}-\d{2}-\d{2}\.md$/.test(file.name)) continue
+      const id = file.name.slice(0, -3)
+      // A file with an impossible date, or in another month's folder, is not a
+      // notebook day. Like any other foreign file it is left alone, so it
+      // cannot stop every other day from downloading.
+      if (!isValidDayId(id) || dayPath(id) !== `${year.name}/${month.name}/${file.name}`) {
+        console.warn('[OneDrive] inventory:ignored-file', { name: file.name, folder: `${year.name}/${month.name}` })
+        continue
       }
+      result.set(id, file)
     }
   }
   return result
