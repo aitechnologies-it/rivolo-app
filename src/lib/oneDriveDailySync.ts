@@ -6,9 +6,9 @@ import { annotateLocalNotebook } from './oneDriveBlame'
 import { mergeOneDriveNotebooksWithAuthors } from './oneDriveMerge'
 import { markSyncLocalDirty } from './syncDirty'
 import { hashSyncContent } from './syncHash'
-import { getOneDriveState, updateOneDriveState } from './oneDriveState'
-import { assertTarget, getDailyState, getDayChange, listDirtyDays, listDailyStates, listDailyErrors, commitDailyCheckpoint,
-  setNotebookProgress, targetKey, applyDailyDocument, type DailyState, type NotebookTarget } from './oneDriveDailyState'
+import { getOneDriveState, updateOneDriveSyncSummary } from './oneDriveState'
+import { assertTarget, getDailyState, getDayChange, listDirtyDays, listDailyStateIds, listDailyErrors, commitDailyCheckpoint,
+  getNotebookProgress, setNotebookProgress, targetKey, applyDailyDocument, writeDailyState, type DailyState, type NotebookTarget } from './oneDriveDailyState'
 import { childAtPath, deleteItem, downloadItem, ensureDayParent, getItem, GraphConflict, inventoryDays, itemAddress, uploadDay, type DriveItem } from './oneDriveGraph'
 import type { SyncPullOptions, SyncPushResult } from './sync'
 
@@ -26,9 +26,18 @@ const assertDayUnchanged = async (target: NotebookTarget, id: string, revision: 
     throw new Error(`OneDrive ${id}: local edits are waiting to be reconciled.`)
   }
 }
-const applyDay = async (target: NotebookTarget, id: string, content: string | null, revision: number, state: DailyState) => {
+// One whole-notebook backup per sync pass, taken before the first day is
+// replaced. Restoring a backup replaces every note, so a backup holding a
+// single day would be unsafe to restore, and one per day would push the
+// earlier backups out of the retained list.
+type PassBackup = () => Promise<void>
+const createPassBackup = (): PassBackup => {
+  let saved: Promise<void> | null = null
+  return () => saved ??= (async () => { await saveRollbackBackup(await exportMarkdownFromDb()) })()
+}
+const applyDay = async (target: NotebookTarget, id: string, content: string | null, revision: number, state: DailyState, backup: PassBackup) => {
   const current = await getDay(id)
-  if (current) await saveRollbackBackup(encodeNotebookDay(current))
+  if (current) await backup()
   await assertDayUnchanged(target, id, revision)
   const nextRevision = await applyDailyDocument(target, id, content, revision, state)
   await markSyncLocalDirty([id], { excludeOneDrive: true })
@@ -46,7 +55,7 @@ export const verifyDailyItem = async (target: NotebookTarget, item: DriveItem, i
   return atPath
 }
 const checkpoint = async (target: NotebookTarget, state: DailyState, event?: Parameters<typeof commitDailyCheckpoint>[2]) => {
-  await commitDailyCheckpoint(target, { ...state, error: null }, event)
+  await commitDailyCheckpoint(target, { ...state, error: null, pending: null }, event)
 }
 const recordFailure = async (target: NotebookTarget, id: string, error: unknown) => {
   await assertTarget(target)
@@ -54,11 +63,17 @@ const recordFailure = async (target: NotebookTarget, id: string, error: unknown)
   await commitDailyCheckpoint(target, { ...state, error: error instanceof Error ? error.message : 'OneDrive daily sync failed.' })
 }
 
-export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pull' | 'push', force = false, known?: DriveItem | null) => {
+export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pull' | 'push', force = false, known?: DriveItem | null, backup: PassBackup = createPassBackup()) => {
   const deferred = deferredFor(target)
   if (getPendingEditorDayIds().has(id)) { deferred.add(id); return { uploaded: false, applied: false } }
   deferred.delete(id)
   const stored = await getDailyState(target, id) ?? freshState(id)
+  // Reaching a point with nothing left to do means an earlier failure for
+  // this day is resolved, even though no checkpoint is otherwise written.
+  const settled = async () => {
+    if (stored.error) await commitDailyCheckpoint(target, { ...stored, error: null })
+    return { uploaded: false, applied: false }
+  }
   const change = await getDayChange(id)
   const local = await getDay(id)
   let uploaded = false
@@ -78,7 +93,11 @@ export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pu
       if (old) throw new Error(`OneDrive ${id}: file moved or renamed. Restore its path before syncing.`)
     }
     const dirty = change.revision !== stored.localRevision
-    if (change.deleted && dirty && !(force && mode === 'pull')) {
+    // A day this device never synced may hold a collaborator's notes it has
+    // not seen. Deleting the local copy must not delete that file: it is
+    // downloaded below instead, like any other unknown remote day.
+    const unknownRemote = Boolean(remote) && !stored.item && !stored.baseline
+    if (change.deleted && dirty && !(force && mode === 'pull') && !unknownRemote) {
       if (remote) {
         // Fetch and validate before deletion; a local explicit deletion wins
         // against an edit but never removes an unrelated or malformed document.
@@ -93,39 +112,58 @@ export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pu
     }
     if (!remote) {
       if (stored.item && !dirty || force && mode === 'pull') {
+        // Already recorded as deleted: nothing to apply or save again.
+        if (!local && !dirty && stored.deleted && !stored.eTag && !stored.baseline) return settled()
         if (local) {
-          appliedRevision = await applyDay(target, id, null, change.revision, { ...stored, baseline: null, eTag: null, deleted: true })
+          // Both lookups answer "not found" when the notebook folder itself
+          // was deleted or access was revoked. Confirm the folder is still
+          // there before treating this as one deleted day.
+          await getItem(target.folder)
+          appliedRevision = await applyDay(target, id, null, change.revision, { ...stored, baseline: null, eTag: null, deleted: true }, backup)
           applied = true
         }
         await checkpoint(target, { ...stored, eTag: null, baseline: null, localRevision: appliedRevision, deleted: true })
         return { uploaded, applied }
       }
-      if (!local || mode === 'pull' && !dirty || stored.deleted && !dirty) return { uploaded, applied }
+      if (!local || mode === 'pull' && !dirty || stored.deleted && !dirty) return settled()
       // A local edit against a confirmed remote deletion recreates only that day.
     }
-    if (!local && !remote) return { uploaded, applied }
-    if (remote && remote.eTag === stored.eTag && !dirty && stored.baseline && !(force && mode === 'pull')) return { uploaded, applied }
+    if (!local && !remote) return settled()
+    if (remote && remote.eTag === stored.eTag && !dirty && stored.baseline && !(force && mode === 'pull')) return settled()
     const remoteText = remote ? (remote.eTag === stored.eTag && stored.baseline && stored.uploadedHash === await hashSyncContent(stored.baseline)
       ? stored.baseline : await readRemote(remote, id)) : null
-    if (!force && !stored.baseline && !observedMissing && local && remoteText) {
+    // The remote file is this device's own upload whose reply or checkpoint
+    // was lost: merge from the local document that upload was built from, so
+    // lines it already contains are not added a second time.
+    const baseline = stored.pending && remoteText && stored.pending.hash === await hashSyncContent(remoteText) ? stored.pending.base : stored.baseline
+    if (!force && !baseline && !observedMissing && local && remoteText) {
       const cloud = decodeNotebookDay(remoteText, id)
-      if (cloud.contentMd !== local.contentMd || cloud.humanTitle !== local.humanTitle) {
+      // On a device that already downloaded the whole notebook, a day without
+      // a baseline was created on both sides since: combine them from an empty
+      // base. A first sync against unknown notes still needs an explicit choice.
+      if ((cloud.contentMd !== local.contentMd || cloud.humanTitle !== local.humanTitle) && !(await getNotebookProgress(target)).completedOnce) {
         throw new Error(`OneDrive ${id}: this folder contains different notes without a shared baseline. Choose the cloud version or keep this device's days in OneDrive settings.`)
       }
     }
-    const localText = local ? await annotateLocalNotebook(encodeNotebookDay(local), stored.baseline ?? emptyBase(id, local.humanTitle), (await getOneDriveState()).accountName, local.updatedAt) : null
+    const localText = local ? await annotateLocalNotebook(encodeNotebookDay(local), baseline ?? emptyBase(id, local.humanTitle), (await getOneDriveState()).accountName, local.updatedAt) : null
     let merged = remoteText ?? localText!
     if (force) merged = mode === 'pull' ? remoteText! : localText ?? remoteText!
-    else if (localText && remoteText) merged = await mergeOneDriveNotebooksWithAuthors(stored.baseline ?? emptyBase(id), localText, remoteText)
+    else if (localText && remoteText) merged = await mergeOneDriveNotebooksWithAuthors(baseline ?? emptyBase(id), localText, remoteText)
     else if (mode === 'pull' && remoteText) merged = remoteText
     decodeNotebookDay(merged, id)
     if (remoteText !== merged && (mode === 'push' || dirty)) {
-      const parent = await ensureDayParent(target.folder, id)
+      // An existing file already names its month folder; only a new day needs
+      // the year and month folders looked up or created.
+      const parent = remote?.parentReference?.id
+        ? `/drives/${encodeURIComponent(remote.parentReference.driveId)}/items/${encodeURIComponent(remote.parentReference.id)}`
+        : await ensureDayParent(target.folder, id)
+      const hash = await hashSyncContent(merged)
+      await assertTarget(target)
+      await writeDailyState(target, { ...(await getDailyState(target, id) ?? stored), pending: { hash, base: localText ?? merged } })
       let result: DriveItem
       try { result = await uploadDay(parent, id, remote, merged, () => assertTarget(target)) }
       catch (error) { if (error instanceof GraphConflict) continue; throw error }
       uploaded = true
-      const hash = await hashSyncContent(merged)
       // Until additions reach the editor, the baseline remains its captured
       // local document. The uploaded hash makes the next pass fetch the remote.
       await checkpoint(target, { ...stored, item: itemAddress(result), eTag: result.eTag, baseline: localText ?? merged,
@@ -134,7 +172,7 @@ export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pu
       try {
         await assertDayUnchanged(target, id, change.revision)
         if (!local || decodeNotebookDay(merged, id).contentMd !== local.contentMd || decodeNotebookDay(merged, id).humanTitle !== local.humanTitle) {
-          appliedRevision = await applyDay(target, id, merged, change.revision, { ...stored, item: itemAddress(result), eTag: result.eTag, baseline: merged, uploadedHash: hash, deleted: false })
+          appliedRevision = await applyDay(target, id, merged, change.revision, { ...stored, item: itemAddress(result), eTag: result.eTag, baseline: merged, uploadedHash: hash, deleted: false, pending: null }, backup)
           applied = true
         }
         await checkpoint(target, { ...stored, item: itemAddress(result), eTag: result.eTag, baseline: merged, uploadedHash: hash,
@@ -149,7 +187,7 @@ export const reconcileDay = async (target: NotebookTarget, id: string, mode: 'pu
     // not stop catch-up or overwrite its editor.
     await assertDayUnchanged(target, id, change.revision)
     if (!local || decodeNotebookDay(merged, id).contentMd !== local.contentMd || decodeNotebookDay(merged, id).humanTitle !== local.humanTitle) {
-      appliedRevision = await applyDay(target, id, merged, change.revision, { ...stored, item: remote ? itemAddress(remote) : stored.item, eTag: remote?.eTag ?? stored.eTag, baseline: merged, uploadedHash: await hashSyncContent(merged), deleted: false })
+      appliedRevision = await applyDay(target, id, merged, change.revision, { ...stored, item: remote ? itemAddress(remote) : stored.item, eTag: remote?.eTag ?? stored.eTag, baseline: merged, uploadedHash: await hashSyncContent(merged), deleted: false, pending: null }, backup)
       applied = true
     }
     await checkpoint(target, { ...stored, item: remote ? itemAddress(remote) : stored.item, eTag: remote?.eTag ?? stored.eTag,
@@ -163,7 +201,7 @@ export const refreshDailySummary = async (target: NotebookTarget) => {
   await assertTarget(target)
   const dirty = await listDirtyDays(target)
   const errors = await listDailyErrors(target)
-  await updateOneDriveState({ localDirty: dirty.length > 0, lastSyncAt: Date.now(), lastRemoteRev: null })
+  await updateOneDriveSyncSummary({ localDirty: dirty.length > 0, lastSyncAt: Date.now(), lastRemoteRev: null })
   return errors.join(' ')
 }
 export const pushDailyNotebook = async (target: NotebookTarget, force = false): Promise<SyncPushResult> => {
@@ -172,9 +210,10 @@ export const pushDailyNotebook = async (target: NotebookTarget, force = false): 
   const ids = new Set([...dirty.map((day) => day.dayId), ...deferred])
   if (force) for (const day of await listAllDays()) if (day.contentMd || await getDailyState(target, day.dayId)) ids.add(day.dayId)
   let uploaded = false, applied = false
+  const backup = createPassBackup()
   for (const id of ids) {
     try {
-      const result = await reconcileDay(target, id, 'push', force)
+      const result = await reconcileDay(target, id, 'push', force, undefined, backup)
       uploaded ||= result.uploaded
       applied ||= result.applied
     } catch (error) { await recordFailure(target, id, error) }
@@ -186,19 +225,22 @@ export const pushDailyNotebook = async (target: NotebookTarget, force = false): 
 export const pullDailyNotebook = async (target: NotebookTarget, options: SyncPullOptions = {}) => {
   const deferred = deferredFor(target)
   const ids = options.dayIds
-  const inventory = ids ? new Map(await Promise.all(ids.map(async (id) => [id, await getItem(childAtPath(target.folder, dayPath(id)), true)] as const))) : await inventoryDays(target.folder)
-  const stored = ids ? [] : await listDailyStates(target)
+  // Days deferred earlier are looked up too: a day absent from this map is
+  // treated as missing in OneDrive.
+  const inventory = ids ? new Map(await Promise.all([...new Set([...ids, ...deferred])].map(async (id) => [id, await getItem(childAtPath(target.folder, dayPath(id)), true)] as const))) : await inventoryDays(target.folder)
+  const stored = new Set(ids ? [] : await listDailyStateIds(target))
   // Missing entries are checked individually by ID inside reconcileDay. This
   // only runs once every page of the inventory has been acquired successfully.
-  const work = new Set([...inventory.keys(), ...(ids ? [] : stored.map((day) => day.dayId)), ...deferred])
+  const work = new Set([...inventory.keys(), ...stored, ...deferred])
   const sorted = [...work].sort((a, b) => b.localeCompare(a))
   let applied = false, loaded = 0
   const failures: string[] = []
   if (!ids) await setNotebookProgress(target, { inventoryComplete: false, loaded: 0, total: sorted.length, lastReconciledAt: null })
-  if (options.force && !ids) await saveRollbackBackup(await exportMarkdownFromDb())
+  const backup = createPassBackup()
+  if (options.force && !ids) await backup()
   for (const id of sorted) {
     try {
-      const result = await reconcileDay(target, id, 'pull', options.force, inventory.get(id) ?? null)
+      const result = await reconcileDay(target, id, 'pull', options.force, inventory.get(id) ?? null, backup)
       applied ||= result.applied
       if (!getPendingEditorDayIds().has(id)) loaded++
       if (!ids) await setNotebookProgress(target, { inventoryComplete: false, loaded, total: sorted.length, lastReconciledAt: null })
@@ -209,10 +251,10 @@ export const pullDailyNotebook = async (target: NotebookTarget, options: SyncPul
   }
   if (options.force && !ids && !failures.length) {
     for (const local of await listAllDays()) {
-      if (inventory.has(local.dayId) || stored.some((day) => day.dayId === local.dayId)) continue
+      if (inventory.has(local.dayId) || stored.has(local.dayId)) continue
       const change = await getDayChange(local.dayId)
       if (getPendingEditorDayIds().has(local.dayId)) { deferred.add(local.dayId); continue }
-      const appliedRevision = await applyDay(target, local.dayId, null, change.revision, { ...freshState(local.dayId), deleted: true })
+      const appliedRevision = await applyDay(target, local.dayId, null, change.revision, { ...freshState(local.dayId), deleted: true }, backup)
       await checkpoint(target, { ...freshState(local.dayId), deleted: true, localRevision: appliedRevision })
       applied = true
     }

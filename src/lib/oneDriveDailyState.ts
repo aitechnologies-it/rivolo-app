@@ -10,6 +10,9 @@ export type DailyState = {
   dayId: string; item: string | null; eTag: string | null; baseline: string | null
   uploadedHash: string | null; localRevision: number; deleted: boolean
   error?: string | null
+  // Written before an upload: the hash sent and the local document it was
+  // merged from. If the reply is lost, the next pass recognises its own upload.
+  pending?: { hash: string; base: string } | null
 }
 export type DayChange = { dayId: string; revision: number; deleted: boolean }
 export const targetKey = (target: NotebookTarget) => JSON.stringify([target.account, target.folder])
@@ -29,6 +32,8 @@ export const getDailyState = async (target: NotebookTarget, dayId: string): Prom
   const row = await queryOne<{ value: string }>('SELECT value FROM onedrive_daily_state WHERE target = ? AND day_id = ?', [targetKey(target), dayId])
   return row ? JSON.parse(row.value) as DailyState : null
 }
+export const listDailyStateIds = async (target: NotebookTarget) =>
+  (await queryAll<{ day_id: string }>('SELECT day_id FROM onedrive_daily_state WHERE target = ?', [targetKey(target)])).map((row) => row.day_id)
 export const listDailyStates = async (target: NotebookTarget) => {
   const rows = await queryAll<{ value: string }>('SELECT value FROM onedrive_daily_state WHERE target = ?', [targetKey(target)])
   return rows.map((row) => JSON.parse(row.value) as DailyState)
@@ -46,10 +51,15 @@ export const listDirtyDays = async (target: NotebookTarget): Promise<DayChange[]
     WHERE c.revision != COALESCE(s.revision, 0) ORDER BY c.day_id DESC`, [targetKey(target)])
   return rows.map((row) => ({ dayId: row.day_id, revision: row.revision, deleted: Boolean(row.deleted) }))
 }
-export type NotebookProgress = { inventoryComplete: boolean; loaded: number; total: number; lastReconciledAt: number | null }
-export const getNotebookProgress = async (target: NotebookTarget) =>
-  await getJsonSetting<NotebookProgress>(`onedrive.progress:${targetKey(target)}`) ?? { inventoryComplete: false, loaded: 0, total: 0, lastReconciledAt: null }
-export const setNotebookProgress = async (target: NotebookTarget, value: NotebookProgress) => {
+// completedOnce stays true after the first complete download of this notebook,
+// while inventoryComplete drops to false during every later full check.
+export type NotebookProgress = { inventoryComplete: boolean; loaded: number; total: number; lastReconciledAt: number | null; completedOnce?: boolean }
+export const getNotebookProgress = async (target: NotebookTarget): Promise<NotebookProgress> => {
+  const stored = await getJsonSetting<NotebookProgress>(`onedrive.progress:${targetKey(target)}`) ?? { inventoryComplete: false, loaded: 0, total: 0, lastReconciledAt: null }
+  return { ...stored, completedOnce: Boolean(stored.completedOnce || stored.inventoryComplete) }
+}
+export const setNotebookProgress = async (target: NotebookTarget, progress: NotebookProgress) => {
+  const value = { ...progress, completedOnce: progress.inventoryComplete || (await getNotebookProgress(target)).completedOnce }
   // Progress is a display hint rewritten per day during a full pull; saving the
   // whole database for each update would make large pulls much slower.
   await setJsonSetting(`onedrive.progress:${targetKey(target)}`, value, { durable: false })

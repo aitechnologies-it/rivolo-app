@@ -1,3 +1,4 @@
+import { flushDatabaseSave } from './db'
 import { getJsonSetting, updateJsonSetting } from './settingsRepository'
 import { executeSql, queryFirstRow, type RivoloDatabase } from './sqliteRuntime'
 
@@ -53,18 +54,23 @@ const readOneDriveState = async () => {
 }
 
 const enqueueOneDriveStateWrite = async <T>(
-  mutator: (current: OneDriveState) => { next: OneDriveState; result: T },
+  // `durable: false` keeps the write in memory until the next scheduled
+  // database save instead of saving the whole database now.
+  mutator: (current: OneDriveState) => { next: OneDriveState; result: T; durable?: boolean },
 ) => {
   // Read and write in one transaction so a dirty mark made inside a note write
   // (markOneDriveLocalDirtyInDatabase) is not overwritten by a queued update.
   const run = async () => {
     let result!: T
+    let durable = true
     await updateJsonSetting<unknown>('onedrive.state', (stored) => {
       const current = { ...DEFAULT_STATE, ...(stored && typeof stored === 'object' ? stored : {}) } as OneDriveState
-      const { next, result: nextResult } = mutator(current)
+      const { next, result: nextResult, durable: nextDurable } = mutator(current)
       result = nextResult
+      durable = nextDurable !== false
       return next
-    })
+    }, { durable: false })
+    if (durable) await flushDatabaseSave()
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') window.dispatchEvent(new Event('rivolo:onedrive-progress'))
     return result
   }
@@ -90,6 +96,15 @@ export const updateOneDriveState = async (updates: Partial<OneDriveState>) => {
       targetGeneration: updates.targetGeneration ?? current.targetGeneration + (accountChanged || connectionChanged ? 1 : 0),
     }
     return { next, result: next }
+  })
+}
+
+// Records the outcome of a sync pass. A pass that changes nothing but the
+// time of the last check does not save the whole database for it.
+export const updateOneDriveSyncSummary = async (updates: Pick<OneDriveState, 'localDirty' | 'lastSyncAt' | 'lastRemoteRev'>) => {
+  return enqueueOneDriveStateWrite((current) => {
+    const next = { ...current, ...updates }
+    return { next, result: next, durable: current.localDirty !== next.localDirty || current.lastRemoteRev !== next.lastRemoteRev }
   })
 }
 
