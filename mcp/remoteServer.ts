@@ -49,7 +49,7 @@ import {
 } from '../src/lib/mcpOAuthMetadata.js'
 import type { DailyRemoteFile } from '../src/lib/notebookDays.js'
 
-const SERVER_VERSION = '0.2.0'
+const SERVER_VERSION = '0.2.1'
 const JSON_HEADERS = {
   'Cache-Control': 'no-store',
   'Content-Type': 'application/json',
@@ -475,10 +475,17 @@ export const handleRemoteMcpRequest = async (
 
   try {
     const runtime = createNotesRuntime(principal, env, dependencies, ctx)
-    const server = new McpServer({
-      name: 'rivolo-notes',
-      version: SERVER_VERSION,
-    })
+    const server = new McpServer(
+      {
+        name: 'rivolo-ait',
+        title: 'Rivolo for AI Technologies',
+        version: SERVER_VERSION,
+        description: 'Rivolo is the shared daily notes workspace for the AI Technologies team.',
+      },
+      {
+        instructions: 'Use this workspace for AI Technologies team notes and shared tasks. If the intended workspace is unclear, confirm it with the user before adding to the shared notebook.',
+      },
+    )
 
     if (canRead) registerReadTools(server, runtime.loadNotes)
     if (canWrite) {
