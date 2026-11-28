@@ -66,7 +66,14 @@ try {
   assert.equal(metadata.resource, 'https://mcp.aitlab.it/mcp')
   const initialized = await call('initialize')
   assert.equal(initialized.status, 200)
-  assert.equal((await initialized.json()).result.serverInfo.name, 'rivolo-notes')
+  const { serverInfo, instructions } = (await initialized.json()).result
+  assert.deepEqual(serverInfo, {
+    name: 'rivolo-ait',
+    title: 'Rivolo for AI Technologies',
+    version: '0.2.1',
+    description: 'Rivolo is the shared daily notes workspace for the AI Technologies team.',
+  })
+  assert.equal(instructions, 'Use this workspace for AI Technologies team notes and shared tasks. If the intended workspace is unclear, confirm it with the user before adding to the shared notebook.')
   const listed = await call('tools/list')
   assert.equal(listed.status, 200)
   const names = (await listed.json()).result.tools.map(tool => tool.name)
